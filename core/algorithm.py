@@ -55,7 +55,7 @@ def get_locations(tags: list) -> list:
 
 l = get_locations(tags)
 
-def get_times(services_location: list):
+def get_times(services_location: list) -> dict:
 
     times = {}
 
