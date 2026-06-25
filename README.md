@@ -13,15 +13,21 @@ Consult the official documentation and [install](https://docs.astral.sh/uv/getti
 
 ### 2. Clone repository
 
-`git clone https://github.com/pedro-hj/15minute-city.git`
-`cd 15minute-city`
+```bash
+git clone https://github.com/pedro-hj/15minute-city.git
+cd 15minute-city
+```
 
 ### 3. Install the dependencies
 
-`uv sync`
+```bash
+uv sync
+```
 
 ### 4. Run the project
 
 In this initial stage, you can run the project with the follow command:
 
-`uv run src/fifteen_minute_city/core/algorithm.py`
+```bash
+uv run src/fifteen_minute_city/core/algorithm.py
+```
