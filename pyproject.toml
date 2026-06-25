@@ -22,3 +22,8 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "fifteen_minute_city"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.20",
+]
