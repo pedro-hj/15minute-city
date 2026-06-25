@@ -1,0 +1,24 @@
+[project]
+name = "15minute-city"
+version = "0.1.0"
+description = "A Python library and API for urban mobility metrics."
+readme = "README.md"
+authors = [
+    { name = "Pedro Jesus", email = "pedrohenriquedejesus0419@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "networkx>=3.4.2",
+    "osmnx>=2.0.7",
+    "scikit-learn>=1.7.2",
+]
+
+[project.scripts]
+fifteen-minute-city = "fifteen_minute_city:main"
+
+[build-system]
+requires = ["uv_build>=0.11.24,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "fifteen_minute_city"
