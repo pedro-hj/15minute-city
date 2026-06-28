@@ -1,4 +1,5 @@
 # 15minute-city
+
 A Python library and API for urban mobility metrics.
 
 _Minimum Python Version: 3.10_
@@ -29,5 +30,5 @@ uv sync
 In this initial stage, you can run the project with the follow command:
 
 ```bash
-uv run src/fifteen_minute_city/core/algorithm.py
+uv run src/fifteen_minute_city/core/algorithm.py city transport velocity
 ```
