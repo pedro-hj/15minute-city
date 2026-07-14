@@ -27,5 +27,6 @@ module-name = "fifteen_minute_city"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-benchmark>=5.2.3",
     "ruff>=0.15.20",
 ]
