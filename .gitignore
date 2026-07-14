@@ -221,3 +221,5 @@ __marimo__/
 # Others
 
 cache/
+.temp
+src/fifteen_minute_city/core/outputs
