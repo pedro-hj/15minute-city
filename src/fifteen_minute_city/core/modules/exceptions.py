@@ -1,0 +1,2 @@
+class ServiceNotSupportedError(Exception):
+    pass
