@@ -7,20 +7,32 @@ from sqlalchemy.orm import sessionmaker, Session
 # Load environment variables from .env file
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
 
-
-def get_engine():
-    """Create and return a SQLAlchemy Engine with connection pooling."""
-    if not DATABASE_URL:
+def get_database_url() -> str:
+    """Retrieve and normalize the DATABASE_URL environment variable."""
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
         raise ValueError(
             "The DATABASE_URL environment variable is not set. "
             "Please create a .env file in the project root containing your Aiven connection URL."
         )
 
+    # Normalize driver prefix for SQLAlchemy 2.0 (e.g., postgres:// or postgresql:// -> postgresql+psycopg://)
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
+    elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+psycopg://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+    return db_url
+
+
+def get_engine():
+    """Create and return a SQLAlchemy Engine with connection pooling."""
+    db_url = get_database_url()
+
     # Secure PostgreSQL connection for cloud database (Aiven)
     engine = create_engine(
-        DATABASE_URL,
+        db_url,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,

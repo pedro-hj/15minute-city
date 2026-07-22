@@ -1,22 +1,21 @@
-import os
 from logging.config import fileConfig
 
-from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from fifteen_minute_city.db.connection import get_database_url
 from fifteen_minute_city.db.models import Base
-
-# Load environment variables from .env
-load_dotenv()
 
 # Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
 
-# Dynamically set sqlalchemy.url from environment variable if available
-database_url = os.getenv("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+# Dynamically set sqlalchemy.url from normalized environment variable
+try:
+    database_url = get_database_url()
+    if database_url:
+        config.set_main_option("sqlalchemy.url", database_url)
+except ValueError:
+    pass
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
@@ -24,6 +23,13 @@ if config.config_file_name is not None:
 
 # Set target metadata for autogenerate support
 target_metadata = Base.metadata
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    """Filter out PostGIS system tables like spatial_ref_sys from autogenerate."""
+    if type_ == "table" and name in ["spatial_ref_sys", "layer", "topology"]:
+        return False
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -34,7 +40,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        include_name=lambda name, type_, parent_names: True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -53,6 +59,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            include_object=include_object,
         )
 
         with context.begin_transaction():
