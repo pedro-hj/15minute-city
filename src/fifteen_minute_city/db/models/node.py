@@ -1,6 +1,9 @@
+from typing import Optional, Dict, Any
 from sqlalchemy import BigInteger, Integer, Float, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from geoalchemy2 import Geometry
+from geoalchemy2.shape import to_shape
+import shapely.geometry
 
 from fifteen_minute_city.db.base import Base
 
@@ -47,6 +50,39 @@ class Node(Base):
     reachabilities: Mapped[list["NodeReachability"]] = relationship(
         "NodeReachability", back_populates="node", cascade="all, delete-orphan"
     )
+
+    @property
+    def point(self) -> shapely.geometry.Point:
+        """Convert WKBElement geometry to a Shapely Point."""
+        return to_shape(self.geom)
+
+    @property
+    def lat(self) -> float:
+        """Latitude coordinate of the node."""
+        return self.point.y
+
+    @property
+    def lon(self) -> float:
+        """Longitude coordinate of the node."""
+        return self.point.x
+
+    @property
+    def geojson(self) -> Dict[str, Any]:
+        """Convert spatial WKBElement point geometry into a JSON-serializable GeoJSON dict."""
+        return shapely.geometry.mapping(self.point)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert Node model instance into a JSON-serializable dictionary."""
+        return {
+            "id": self.id,
+            "execution_id": self.execution_id,
+            "osm_id": self.osm_id,
+            "lat": self.lat,
+            "lon": self.lon,
+            "geom": self.geojson,
+            "overall_index": self.overall_index,
+            "overall_mean_time": self.overall_mean_time,
+        }
 
     def __repr__(self) -> str:
         return f"<Node(id={self.id}, osm_id={self.osm_id}, execution_id={self.execution_id})>"
