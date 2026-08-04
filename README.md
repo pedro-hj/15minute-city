@@ -30,5 +30,5 @@ uv sync
 In this initial stage, you can run the project with the follow command:
 
 ```bash
-uv run src/fifteen_minute_city/core/algorithm.py city transport velocity
+uv run src/fifteen_minute_city/main.py
 ```

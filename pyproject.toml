@@ -1,12 +1,12 @@
 [project]
 name = "15minute-city"
-version = "0.1.0"
+version = "1.0.0"
 description = "A Python library and API for urban mobility metrics."
 readme = "README.md"
 authors = [
     { name = "Pedro Jesus", email = "pedrohenriquedejesus0419@gmail.com" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.18.5",
     "geoalchemy2>=0.20.0",
