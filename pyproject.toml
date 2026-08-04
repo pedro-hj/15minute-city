@@ -16,7 +16,6 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "scikit-learn>=1.7.2",
     "sqlalchemy>=2.0.51",
-    "typer>=0.26.8",
 ]
 
 [project.scripts]

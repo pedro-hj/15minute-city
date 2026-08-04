@@ -4,9 +4,7 @@ import pathlib
 from fifteen_minute_city.core.modules.algorithms import multi_source_algorithm
 from fifteen_minute_city.core.modules.osm_utils import load_osm_graph
 from fifteen_minute_city.core.modules.osm_utils import load_services_geojson
-
-PATH_GRAPHS = "src/fifteen_minute_city/core/outputs/graph_locales"
-PATH_OSM_MAPS = "src/fifteen_minute_city/core/outputs/osm_maps"
+from fifteen_minute_city.constants import PATH_OSM_MAPS
 
 ox.graph_from_address
 class Region:
@@ -35,7 +33,7 @@ class Region:
             "service": self.speed,
         }
 
-        folder = pathlib.Path(PATH_OSM_MAPS)
+        folder = PATH_OSM_MAPS
         folder.mkdir(exist_ok=True, parents=True)
 
         possible_graph = list(folder.rglob(f"{self.locale}_{self.network_type}.osm"))
@@ -50,7 +48,7 @@ class Region:
         graph = ox.add_edge_travel_times(graph)
 
         self.__graph = graph
-        self.__path = f"{PATH_OSM_MAPS}/{self.locale['city']}"
+        self.__path = PATH_OSM_MAPS / self.locale['city']
 
         print(f"Graph of region \033[1m{self.locale['city']}\033[0m successfully generated.")
 

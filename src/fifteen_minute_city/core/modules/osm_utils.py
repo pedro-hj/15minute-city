@@ -5,9 +5,7 @@ import geopandas as gpd
 import networkx as nx
 import osmnx as ox
 from shapely.geometry import LineString
-
-PATH_OSM_MAPS = "src/fifteen_minute_city/core/outputs/osm_maps"
-PATH_PBF_PATH = "src/fifteen_minute_city/core/pbfs"
+from fifteen_minute_city.constants import PATH_PBF_PATH, PATH_OSM_MAPS
 
 def load_osm_graph(pbf_filename: str, region: dict, network_type: str = "walk"):
     os.makedirs(PATH_OSM_MAPS, exist_ok=True)
@@ -28,7 +26,7 @@ def load_osm_graph(pbf_filename: str, region: dict, network_type: str = "walk"):
     # If the cache does not exist, the raw .pbf file is cropped according to the region being analyzed
     region_gdf = ox.geocode_to_gdf(region)
 
-    path_polygon = PATH_OSM_MAPS + f"/{region['city']}_bounds.geojson"
+    path_polygon = PATH_OSM_MAPS / f"{region['city']}_bounds.geojson"
     region_gdf[['geometry']].to_file(path_polygon, driver="GeoJSON")
 
     extract_cmd = f'osmium extract -p "{path_polygon}" "{pbf_source_path}" -o "{pbf_raw}" --overwrite'

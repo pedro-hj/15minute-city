@@ -9,7 +9,6 @@ def multi_source_algorithm(G, points: dict[dict]):
         (G.nodes[n]['x'], G.nodes[n]['y'])
         for n in node_ids
     ])
-    print(len(node_coords))
 
     tree = cKDTree(node_coords)
 
@@ -27,10 +26,7 @@ def multi_source_algorithm(G, points: dict[dict]):
     result = []
     
     for tag, points in location_services.items():
-        print(len(G))
-        print(len(points))
         time = nx.multi_source_dijkstra_path_length(G, sources=points, weight='travel_time')
-        print(len(time))
         serie_times = pd.Series(time)
         data = {
             'service': tag,
