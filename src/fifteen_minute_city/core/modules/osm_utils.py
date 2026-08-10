@@ -50,9 +50,24 @@ def load_osm_graph(pbf_filename: str, region: dict, network_type: str = "walk"):
 
     G = create_walking_graph(vias_gdf)
 
+    '''
+    "G" -> "no" TABLE
+
+    nodes, _ = ox.graph_to_gdfs(G)
+    nodes_db = gpd.GeoDataFrame({
+        'id': ,
+        'execucao_id': ,
+        'osm_id': nodes_db.index,
+        'geom': nodes_db.geometry,
+        'indice_geral': None,
+        'tempo_medio_geral': None
+    }, crs=nodes.crs)
+    '''
+
     # Saves graph in Pickle
     with open(pkl_cache, "wb") as f:
         pickle.dump(G, f, protocol=pickle.HIGHEST_PROTOCOL)
+        # BD - Armazenar pickle dos grafos da cidade
 
     # Removes temp files
     for temp_file in [geojson_filtered]:
