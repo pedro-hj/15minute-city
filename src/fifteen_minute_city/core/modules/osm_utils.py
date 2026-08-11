@@ -4,6 +4,8 @@ import subprocess as sp
 import geopandas as gpd
 import networkx as nx
 import osmnx as ox
+import numpy as np
+from scipy.spatial import cKDTree
 from shapely.geometry import LineString
 from fifteen_minute_city.constants import PATH_PBF_PATH, PATH_OSM_MAPS
 
@@ -116,8 +118,55 @@ def load_services_geojson(G: nx.MultiDiGraph, pbf_region_path: str, services: di
     for service_type, sub_service in services_geojson.groupby('service_type'):
         result[service_type] = dict(zip(sub_service.get('name'), sub_service.get('geometry')))
 
-    return result
+    data = organizes_data(G, result)
 
+    return data
+
+def organizes_data(G: nx.MultiDiGraph, result: dict) -> dict:
+    node_ids = list(G.nodes)
+    node_coords = np.array([
+        (G.nodes[n]['x'], G.nodes[n]['y'])
+        for n in node_ids
+    ])
+
+    tree = cKDTree(node_coords)
+
+    location_services = {}
+    data_to_db = {}
+    for tag, services in result.items():
+        points = []   
+        data = []
+        for service, coordinate in services.items():
+            pair_coordinates = np.array([
+                [coordinate.x, coordinate.y]
+            ])
+            distances, id = tree.query(pair_coordinates, k=1)
+            node_id = [node_ids[idx] for idx in id][0]
+            node_data = [service,node_id,coordinate]
+            points.append(node_id)
+            data.append(node_data)
+        location_services[tag] = points
+        data_to_db[tag] = data
+    print(data_to_db)
+
+    '''
+    "data_to_db" -> "servico" TABLE
+
+    data_to_db returns:
+
+    {
+        'bank': [
+            ['Bank Name', NODEID, GEOM],
+            ...
+        ],
+        'supermarket': [
+            ['Supermarket Name', NODEID, GEOM],
+            ...
+        ],
+        ...
+    }
+    '''
+    return location_services
 
 def create_walking_graph(
     vias_gdf: gpd.GeoDataFrame,
