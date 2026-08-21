@@ -59,10 +59,11 @@ class Region:
         s_formatted = {}
         for name, tag in Region.__tags.items():
             s_formatted[name] = list(set(services) & set(tag))
-            
+
         self.__services = load_services_geojson(self.__graph, self.__path, s_formatted)
         return self.__services
 
     def calculate_times(self, algorithm: str) -> list:
         if algorithm == 'dijkstra':
-            return multi_source_algorithm(self.__graph, self.__services)
+            result = multi_source_algorithm(self.__graph, self.__services)
+            return result

@@ -14,5 +14,10 @@ def multi_source_algorithm(G: nx.MultiDiGraph, points: dict[list]) -> list:
             'max': float(serie_times.max())/60,
             'std': float(serie_times.std())/60
         }
+        '''
+        PERSISTENCE POINT
+
+        "data" -> "alcancabilidade_no" TABLE, "indice_cidade" TABLE
+        '''
         result.append(data)
     return result

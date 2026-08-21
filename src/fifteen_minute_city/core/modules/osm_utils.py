@@ -28,6 +28,26 @@ def load_osm_graph(pbf_filename: str, region: dict, network_type: str = "walk"):
     # If the cache does not exist, the raw .pbf file is cropped according to the region being analyzed
     region_gdf = ox.geocode_to_gdf(region)
 
+    '''
+    PERSISTENCE POINT
+
+    "region_gdf" -> "city" TABLE
+
+    city_data_to_db = {
+        "nome": region["city"],
+        "pais": region["country"],
+        "geom_limite": region_gdf["geometry"]
+    }
+    '''
+
+    '''
+    RECOVERY POINT
+
+    "city" TABLE -> "region_gdf"
+
+    region_gdf = city_data_from_db["geom_limite"]
+    '''
+
     path_polygon = PATH_OSM_MAPS / f"{region['city']}_bounds.geojson"
     region_gdf[['geometry']].to_file(path_polygon, driver="GeoJSON")
 
@@ -53,23 +73,23 @@ def load_osm_graph(pbf_filename: str, region: dict, network_type: str = "walk"):
     G = create_walking_graph(vias_gdf)
 
     '''
+    PERSISTENCE POINT
+
     "G" -> "no" TABLE
 
-    nodes, _ = ox.graph_to_gdfs(G)
-    nodes_db = gpd.GeoDataFrame({
-        'id': ,
-        'execucao_id': ,
-        'osm_id': nodes_db.index,
-        'geom': nodes_db.geometry,
-        'indice_geral': None,
-        'tempo_medio_geral': None
-    }, crs=nodes.crs)
+    nodes_gdf, _ = ox.graph_to_gdfs(G)
+
+    gdf_nos_db = gpd.GeoDataFrame({
+        'execucao_id': execucao_id_atual,
+        'osm_id': nodes_gdf.index,  
+        'geom': nodes_gdf.geometry, 
+        'indice_geral': None,       
+        'tempo_medio_geral': None   
+    }, crs="EPSG:4326")
     '''
 
-    # Saves graph in Pickle
     with open(pkl_cache, "wb") as f:
         pickle.dump(G, f, protocol=pickle.HIGHEST_PROTOCOL)
-        # BD - Armazenar pickle dos grafos da cidade
 
     # Removes temp files
     for temp_file in [geojson_filtered]:
@@ -79,6 +99,12 @@ def load_osm_graph(pbf_filename: str, region: dict, network_type: str = "walk"):
     return G
 
 def load_services_geojson(G: nx.MultiDiGraph, pbf_region_path: str, services: dict[list]):
+
+    '''
+    RECOVERY POINT
+
+    "service" TABLE -> "services_geojson"
+    '''
 
     # Filtering services in the analyzed region
     filter_services = (
@@ -97,6 +123,7 @@ def load_services_geojson(G: nx.MultiDiGraph, pbf_region_path: str, services: di
 
     # Organizing data
     services_geojson = gpd.read_file(f"{pbf_region_path}_services.geojson")
+
     services_geojson['service_type'] = (
     services_geojson.get('amenity', None)
     .fillna(services_geojson.get('shop', None))
@@ -119,6 +146,26 @@ def load_services_geojson(G: nx.MultiDiGraph, pbf_region_path: str, services: di
         result[service_type] = dict(zip(sub_service.get('name'), sub_service.get('geometry')))
 
     data = organizes_data(G, result)
+
+    '''
+    PERSISTENCE POINT
+
+    "data" -> "service" TABLE
+
+    data returns:
+
+    {
+        'bank': [
+            ['Bank Name', NODEID, GEOM],
+            ...
+        ],
+        'supermarket': [
+            ['Supermarket Name', NODEID, GEOM],
+            ...
+        ],
+        ...
+    }
+    '''
 
     return data
 
@@ -147,25 +194,6 @@ def organizes_data(G: nx.MultiDiGraph, result: dict) -> dict:
             data.append(node_data)
         location_services[tag] = points
         data_to_db[tag] = data
-    print(data_to_db)
-
-    '''
-    "data_to_db" -> "servico" TABLE
-
-    data_to_db returns:
-
-    {
-        'bank': [
-            ['Bank Name', NODEID, GEOM],
-            ...
-        ],
-        'supermarket': [
-            ['Supermarket Name', NODEID, GEOM],
-            ...
-        ],
-        ...
-    }
-    '''
     return location_services
 
 def create_walking_graph(
@@ -311,5 +339,4 @@ def create_walking_graph(
                 u,
                 **edge_attributes,
             )
-
     return G
