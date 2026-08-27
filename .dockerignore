@@ -1,0 +1,27 @@
+# Python & Virtual Environments
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Git
+.git/
+.gitignore
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Large Data & Outputs (Mounted via Volumes)
+src/fifteen_minute_city/core/pbfs/
+src/fifteen_minute_city/core/outputs/
+temp/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
