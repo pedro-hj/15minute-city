@@ -1,7 +1,15 @@
-from sqlalchemy import Integer, String, ForeignKey
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fifteen_minute_city.db.base import Base
+
+if TYPE_CHECKING:
+    from fifteen_minute_city.db.models.metrics import CityIndex, NodeReachability
+    from fifteen_minute_city.db.models.service import Service
 
 
 class ServiceCategory(Base):
@@ -27,16 +35,16 @@ class ServiceCategory(Base):
     )
 
     # Relationships
-    osm_tags: Mapped[list["CategoryOsmTag"]] = relationship(
+    osm_tags: Mapped[list[CategoryOsmTag]] = relationship(
         "CategoryOsmTag", back_populates="category", cascade="all, delete-orphan"
     )
-    services: Mapped[list["Service"]] = relationship(
+    services: Mapped[list[Service]] = relationship(
         "Service", back_populates="category"
     )
-    reachabilities: Mapped[list["NodeReachability"]] = relationship(
+    reachabilities: Mapped[list[NodeReachability]] = relationship(
         "NodeReachability", back_populates="category"
     )
-    city_indices: Mapped[list["CityIndex"]] = relationship(
+    city_indices: Mapped[list[CityIndex]] = relationship(
         "CityIndex", back_populates="category"
     )
 
@@ -71,7 +79,7 @@ class CategoryOsmTag(Base):
     )
 
     # Relationships
-    category: Mapped["ServiceCategory"] = relationship("ServiceCategory", back_populates="osm_tags")
+    category: Mapped[ServiceCategory] = relationship("ServiceCategory", back_populates="osm_tags")
 
     def __repr__(self) -> str:
         return f"<CategoryOsmTag(id={self.id}, tag='{self.osm_key}={self.osm_value}')>"

@@ -1,8 +1,9 @@
 import os
-from typing import Generator
+from collections.abc import Generator
+
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 # Load environment variables from .env file
 load_dotenv()

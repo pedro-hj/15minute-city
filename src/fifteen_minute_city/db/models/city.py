@@ -1,11 +1,17 @@
-from typing import Optional, Dict, Any
-from sqlalchemy import Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import shapely.geometry
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import to_shape
-import shapely.geometry
+from sqlalchemy import Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fifteen_minute_city.db.base import Base
+
+if TYPE_CHECKING:
+    from fifteen_minute_city.db.models.execution import Execution
 
 
 class City(Base):
@@ -33,19 +39,19 @@ class City(Base):
     )
 
     # Relationships
-    executions: Mapped[list["Execution"]] = relationship(
+    executions: Mapped[list[Execution]] = relationship(
         "Execution", back_populates="city", cascade="all, delete-orphan"
     )
 
     @property
-    def geojson_boundary(self) -> Optional[Dict[str, Any]]:
+    def geojson_boundary(self) -> dict[str, Any] | None:
         """Convert spatial WKBElement boundary geometry into a JSON-serializable GeoJSON dict."""
         if self.geom_boundary is None:
             return None
         shapely_obj = to_shape(self.geom_boundary)
         return shapely.geometry.mapping(shapely_obj)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert City model instance into a JSON-serializable dictionary."""
         return {
             "id": self.id,

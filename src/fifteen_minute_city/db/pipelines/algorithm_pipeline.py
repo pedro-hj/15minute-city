@@ -1,19 +1,35 @@
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import Session
+from typing import Any
+
+import geopandas as gpd
+import networkx as nx
 
 from fifteen_minute_city.db.connection import get_db
-from fifteen_minute_city.db.services.city_service import get_or_create_city
-from fifteen_minute_city.db.services.category_service import seed_default_categories
+from fifteen_minute_city.db.models.city import City
+from fifteen_minute_city.db.models.metrics import CityIndex
+from fifteen_minute_city.db.models.service import Service
+from fifteen_minute_city.db.services.category_service import (
+    list_categories,
+    seed_default_categories,
+)
+from fifteen_minute_city.db.services.city_service import (
+    get_city_boundary_gdf,
+    get_or_create_city,
+    save_city_boundary_from_gdf,
+)
 from fifteen_minute_city.db.services.execution_service import (
     create_execution,
     update_execution_status,
 )
 from fifteen_minute_city.db.services.metrics_service import (
+    bulk_save_node_reachabilities,
     bulk_save_nodes,
     bulk_save_services,
-    bulk_save_node_reachabilities,
+    get_services_by_execution,
     save_city_indices,
+    save_city_indices_from_metrics,
+    save_graph_nodes_from_nx,
+    save_services_from_organizer_dict,
 )
 
 
@@ -23,7 +39,7 @@ class CategoryConfig:
     code: str
     display_name: str
     moreno_pillar: str
-    osm_tags: List[Dict[str, str]]
+    osm_tags: list[dict[str, str]]
 
 
 @dataclass
@@ -33,22 +49,56 @@ class ExecutionContext:
     city_name: str
     country: str
     speed_kmh: float
-    categories: List[CategoryConfig]
+    categories: list[CategoryConfig]
+
+    @property
+    def category_id_map(self) -> dict[str, int]:
+        """Mapping from category code (e.g. 'bank') -> category database ID."""
+        return {cat.code: cat.id for cat in self.categories}
 
 
 class AlgorithmPipeline:
     """
     High-level facade orchestrating database workflows for the reachability algorithm developer.
     
-    Provides a simple 3-method interface: prepare_execution(), save_execution_results(), and fail_execution().
+    Provides simple methods for each RECOVERY and PERSISTENCE point:
+    - get_city_boundary() [RP 1]
+    - save_city() [PP 1]
+    - prepare_execution()
+    - save_graph_nodes() [PP 2]
+    - get_execution_services() [RP 2]
+    - save_services_from_organizer() [PP 3]
+    - save_algorithm_metrics() [PP 4]
     """
+
+    def get_city_boundary(
+        self, city_name: str, country: str = "Brazil"
+    ) -> gpd.GeoDataFrame | None:
+        """
+        [RECOVERY POINT 1]
+        Retrieve the geographic boundary GeoDataFrame from the database if already stored.
+        """
+        with next(get_db()) as db:
+            return get_city_boundary_gdf(db, name=city_name, country=country)
+
+    def save_city(
+        self, city_name: str, country: str, boundary_gdf: gpd.GeoDataFrame
+    ) -> City:
+        """
+        [PERSISTENCE POINT 1]
+        Save or update the city boundary polygon in the 'city' table.
+        """
+        with next(get_db()) as db:
+            return save_city_boundary_from_gdf(
+                db, name=city_name, country=country, gdf=boundary_gdf
+            )
 
     def prepare_execution(
         self,
         city_name: str,
         country: str,
         speed_kmh: float = 3.0,
-        geom_boundary_geojson: Optional[dict] = None,
+        geom_boundary_geojson: dict | None = None,
     ) -> ExecutionContext:
         """
         Prepare an execution run: ensures city exists, seeds categories, and creates an execution record.
@@ -57,7 +107,7 @@ class AlgorithmPipeline:
         :param country: Name of the country (e.g., 'Brazil').
         :param speed_kmh: Walking speed in km/h.
         :param geom_boundary_geojson: Optional GeoJSON boundary polygon of the city.
-        :return: ExecutionContext containing execution_id and category configuration for OSMnx queries.
+        :return: ExecutionContext containing execution_id and category configuration.
         """
         with next(get_db()) as db:
             # 1. Get or create target city
@@ -92,30 +142,107 @@ class AlgorithmPipeline:
                 categories=category_configs,
             )
 
+    def save_graph_nodes(
+        self, execution_id: int, G: nx.MultiDiGraph
+    ) -> dict[int, int]:
+        """
+        [PERSISTENCE POINT 2]
+        Extract all nodes from NetworkX graph and bulk save them into the 'node' table.
+
+        :param execution_id: Target execution run ID.
+        :param G: NetworkX graph with 'x' (lon) and 'y' (lat) attributes.
+        :return: Mapping from osm_id -> db node.id.
+        """
+        with next(get_db()) as db:
+            node_map = save_graph_nodes_from_nx(db, execution_id, G)
+            db.commit()
+            return node_map
+
+    def get_execution_services(self, execution_id: int) -> list[Service]:
+        """
+        [RECOVERY POINT 2]
+        Retrieve physical services stored for a given execution run.
+        """
+        with next(get_db()) as db:
+            return get_services_by_execution(db, execution_id)
+
+    def save_services_from_organizer(
+        self,
+        execution_id: int,
+        organized_data: dict[str, list[list[Any]]],
+        osm_to_db_node_map: dict[int, int] | None = None,
+    ) -> list[Service]:
+        """
+        [PERSISTENCE POINT 3]
+        Save organized service establishments into the 'service' table.
+
+        :param execution_id: Target execution run ID.
+        :param organized_data: Output dictionary from organizes_data().
+        :param osm_to_db_node_map: Optional mapping from osm_id -> db node.id.
+        :return: List of saved Service models.
+        """
+        with next(get_db()) as db:
+            categories = list_categories(db)
+            category_id_map = {cat.code: cat.id for cat in categories}
+            saved_services = save_services_from_organizer_dict(
+                db,
+                execution_id=execution_id,
+                organized_data=organized_data,
+                category_id_map=category_id_map,
+                osm_to_db_node_map=osm_to_db_node_map,
+            )
+            db.commit()
+            return saved_services
+
+    def save_algorithm_metrics(
+        self,
+        execution_id: int,
+        metrics_list: list[dict[str, Any]],
+        processing_time_seconds: float | None = None,
+    ) -> list[CityIndex]:
+        """
+        [PERSISTENCE POINT 4]
+        Save aggregated city metrics (mean, median, etc.) into the 'city_index' table
+        and mark the execution run as completed.
+
+        :param execution_id: Target execution run ID.
+        :param metrics_list: Output from multi_source_algorithm().
+        :param processing_time_seconds: Total algorithm runtime in seconds.
+        :return: List of saved CityIndex models.
+        """
+        with next(get_db()) as db:
+            categories = list_categories(db)
+            category_id_map = {cat.code: cat.id for cat in categories}
+            saved_indices = save_city_indices_from_metrics(
+                db,
+                execution_id=execution_id,
+                metrics_list=metrics_list,
+                category_id_map=category_id_map,
+            )
+            update_execution_status(
+                db,
+                execution_id=execution_id,
+                status="completed",
+                execution_time_seconds=processing_time_seconds,
+            )
+            db.commit()
+            return saved_indices
+
     def save_execution_results(
         self,
         execution_id: int,
-        nodes_data: List[Dict[str, Any]],
-        services_data: List[Dict[str, Any]],
-        reachabilities_data: List[Dict[str, Any]],
-        city_indices_data: List[Dict[str, Any]],
+        nodes_data: list[dict[str, Any]],
+        services_data: list[dict[str, Any]],
+        reachabilities_data: list[dict[str, Any]],
+        city_indices_data: list[dict[str, Any]],
         processing_time_seconds: float,
     ) -> None:
         """
-        Bulk save all computation results (nodes, services, reachabilities, city indices) and mark execution as completed.
-
-        :param execution_id: ID of the execution returned by prepare_execution().
-        :param nodes_data: List of dicts with 'osm_id', 'lat', 'lon', optional 'overall_index', 'overall_mean_time'.
-        :param services_data: List of dicts with 'category_id', 'name', 'lat', 'lon', optional 'osm_node_id'.
-        :param reachabilities_data: List of dicts with 'osm_node_id', 'category_id', 'travel_time_minutes', 'within_threshold', optional 'service_index'.
-        :param city_indices_data: List of dicts with 'category_id', 'mean_travel_time_minutes', 'percentage_within_threshold', 'overall_index'.
-        :param processing_time_seconds: Runtime processing duration in seconds.
+        Bulk save all computation results and mark execution as completed.
         """
         with next(get_db()) as db:
-            # 1. Bulk save nodes and get mapping from osm_id -> db_node_id
             node_id_map = bulk_save_nodes(db, execution_id, nodes_data)
 
-            # 2. Resolve representative_node_id for services if osm_node_id provided
             prepared_services = []
             for s in services_data:
                 rep_node_id = s.get("representative_node_id")
@@ -134,7 +261,6 @@ class AlgorithmPipeline:
 
             saved_services = bulk_save_services(db, execution_id, prepared_services)
 
-            # 3. Resolve node_id and closest_service_id for reachabilities
             prepared_reachabilities = []
             for r in reachabilities_data:
                 node_id = r.get("node_id")
@@ -157,11 +283,8 @@ class AlgorithmPipeline:
                     )
 
             bulk_save_node_reachabilities(db, prepared_reachabilities)
-
-            # 4. Save aggregated city indices
             save_city_indices(db, execution_id, city_indices_data)
 
-            # 5. Mark execution status as completed
             update_execution_status(
                 db,
                 execution_id=execution_id,
@@ -173,9 +296,6 @@ class AlgorithmPipeline:
     def fail_execution(self, execution_id: int, error_message: str) -> None:
         """
         Mark an execution as failed with status 'error'.
-
-        :param execution_id: Execution ID.
-        :param error_message: Exception or failure explanation message.
         """
         with next(get_db()) as db:
             update_execution_status(db, execution_id=execution_id, status="error")

@@ -1,4 +1,4 @@
-from typing import Optional, List
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -31,12 +31,12 @@ def create_execution(
     return execution
 
 
-def get_execution_by_id(db: Session, execution_id: int) -> Optional[Execution]:
+def get_execution_by_id(db: Session, execution_id: int) -> Execution | None:
     """Retrieve an Execution by its unique primary key ID."""
     return db.scalar(select(Execution).where(Execution.id == execution_id))
 
 
-def list_executions_for_city(db: Session, city_id: int) -> List[Execution]:
+def list_executions_for_city(db: Session, city_id: int) -> list[Execution]:
     """Retrieve all execution runs associated with a specific city ordered chronologically."""
     return list(
         db.scalars(
@@ -51,7 +51,7 @@ def update_execution_status(
     db: Session,
     execution_id: int,
     status: str,
-    execution_time_seconds: Optional[float] = None,
+    execution_time_seconds: float | None = None,
 ) -> Execution:
     """
     Update the status and optional runtime duration of an execution.
