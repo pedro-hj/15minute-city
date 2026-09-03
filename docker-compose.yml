@@ -1,0 +1,43 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fifteen_minute_city_app
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PYTHONPATH=/app/src
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Live sync of source code and migrations for development
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      # Mount map inputs and generated output folders directly from host
+      - ./src/fifteen_minute_city/core/pbfs:/app/src/fifteen_minute_city/core/pbfs
+      - ./src/fifteen_minute_city/core/outputs:/app/src/fifteen_minute_city/core/outputs
+      # Isolate container virtual environment from host .venv
+      - /app/.venv
+    command: ["python", "-m", "fifteen_minute_city.main"]
+
+  # Optional local PostGIS database for offline development and local testing
+  db-local:
+    image: postgis/postgis:16-3.4
+    container_name: fifteen_minute_city_db_local
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: defaultdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+    profiles:
+      - local-db
+
+volumes:
+  postgis_data:
