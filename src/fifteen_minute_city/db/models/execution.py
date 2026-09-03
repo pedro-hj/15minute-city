@@ -1,8 +1,18 @@
+from __future__ import annotations
+
 import datetime
-from sqlalchemy import Integer, String, Float, DateTime, ForeignKey, func
+from typing import TYPE_CHECKING
+
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fifteen_minute_city.db.base import Base
+
+if TYPE_CHECKING:
+    from fifteen_minute_city.db.models.city import City
+    from fifteen_minute_city.db.models.metrics import CityIndex
+    from fifteen_minute_city.db.models.node import Node
+    from fifteen_minute_city.db.models.service import Service
 
 
 class Execution(Base):
@@ -45,14 +55,14 @@ class Execution(Base):
     )
 
     # Relationships
-    city: Mapped["City"] = relationship("City", back_populates="executions")
-    nodes: Mapped[list["Node"]] = relationship(
+    city: Mapped[City] = relationship("City", back_populates="executions")
+    nodes: Mapped[list[Node]] = relationship(
         "Node", back_populates="execution", cascade="all, delete-orphan"
     )
-    services: Mapped[list["Service"]] = relationship(
+    services: Mapped[list[Service]] = relationship(
         "Service", back_populates="execution", cascade="all, delete-orphan"
     )
-    city_indices: Mapped[list["CityIndex"]] = relationship(
+    city_indices: Mapped[list[CityIndex]] = relationship(
         "CityIndex", back_populates="execution", cascade="all, delete-orphan"
     )
 

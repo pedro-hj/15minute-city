@@ -1,7 +1,17 @@
-from sqlalchemy import BigInteger, Integer, Float, Boolean, ForeignKey
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fifteen_minute_city.db.base import Base
+
+if TYPE_CHECKING:
+    from fifteen_minute_city.db.models.category import ServiceCategory
+    from fifteen_minute_city.db.models.execution import Execution
+    from fifteen_minute_city.db.models.node import Node
+    from fifteen_minute_city.db.models.service import Service
 
 
 class NodeReachability(Base):
@@ -39,9 +49,9 @@ class NodeReachability(Base):
     )
 
     # Relationships
-    node: Mapped["Node"] = relationship("Node", back_populates="reachabilities")
-    category: Mapped["ServiceCategory"] = relationship("ServiceCategory", back_populates="reachabilities")
-    closest_service: Mapped["Service"] = relationship("Service", back_populates="closest_for_reachabilities")
+    node: Mapped[Node] = relationship("Node", back_populates="reachabilities")
+    category: Mapped[ServiceCategory] = relationship("ServiceCategory", back_populates="reachabilities")
+    closest_service: Mapped[Service] = relationship("Service", back_populates="closest_for_reachabilities")
 
     def __repr__(self) -> str:
         return (
@@ -82,8 +92,8 @@ class CityIndex(Base):
     )
 
     # Relationships
-    execution: Mapped["Execution"] = relationship("Execution", back_populates="city_indices")
-    category: Mapped["ServiceCategory"] = relationship("ServiceCategory", back_populates="city_indices")
+    execution: Mapped[Execution] = relationship("Execution", back_populates="city_indices")
+    category: Mapped[ServiceCategory] = relationship("ServiceCategory", back_populates="city_indices")
 
     def __repr__(self) -> str:
         return (

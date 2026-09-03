@@ -1,8 +1,7 @@
-from typing import Optional, List, Dict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from fifteen_minute_city.db.models.category import ServiceCategory, CategoryOsmTag
+from fifteen_minute_city.db.models.category import CategoryOsmTag, ServiceCategory
 
 DEFAULT_CATEGORIES_DATA = [
     {
@@ -50,17 +49,17 @@ DEFAULT_CATEGORIES_DATA = [
 ]
 
 
-def list_categories(db: Session) -> List[ServiceCategory]:
+def list_categories(db: Session) -> list[ServiceCategory]:
     """Retrieve all service categories registered in the system."""
     return list(db.scalars(select(ServiceCategory).order_by(ServiceCategory.id)).all())
 
 
-def get_category_by_code(db: Session, code: str) -> Optional[ServiceCategory]:
+def get_category_by_code(db: Session, code: str) -> ServiceCategory | None:
     """Retrieve a ServiceCategory by its unique code string."""
     return db.scalar(select(ServiceCategory).where(ServiceCategory.code == code))
 
 
-def seed_default_categories(db: Session) -> List[ServiceCategory]:
+def seed_default_categories(db: Session) -> list[ServiceCategory]:
     """
     Seed standard 15-minute city service categories and OSM tag mappings into the database.
 

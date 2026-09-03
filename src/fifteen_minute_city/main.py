@@ -1,5 +1,6 @@
 from fifteen_minute_city.core.modules.locales import Region
 
+
 def main():
     # Example
     city = Region({'city': 'São Paulo', 'state': 'São Paulo', 'country': 'Brazil'}, "walk", 3)

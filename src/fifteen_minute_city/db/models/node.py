@@ -1,11 +1,19 @@
-from typing import Optional, Dict, Any
-from sqlalchemy import BigInteger, Integer, Float, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import shapely.geometry
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import to_shape
-import shapely.geometry
+from sqlalchemy import BigInteger, Float, ForeignKey, Integer
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fifteen_minute_city.db.base import Base
+
+if TYPE_CHECKING:
+    from fifteen_minute_city.db.models.execution import Execution
+    from fifteen_minute_city.db.models.metrics import NodeReachability
+    from fifteen_minute_city.db.models.service import Service
 
 
 class Node(Base):
@@ -43,11 +51,11 @@ class Node(Base):
     )
 
     # Relationships
-    execution: Mapped["Execution"] = relationship("Execution", back_populates="nodes")
-    representative_services: Mapped[list["Service"]] = relationship(
+    execution: Mapped[Execution] = relationship("Execution", back_populates="nodes")
+    representative_services: Mapped[list[Service]] = relationship(
         "Service", back_populates="representative_node"
     )
-    reachabilities: Mapped[list["NodeReachability"]] = relationship(
+    reachabilities: Mapped[list[NodeReachability]] = relationship(
         "NodeReachability", back_populates="node", cascade="all, delete-orphan"
     )
 
@@ -67,11 +75,11 @@ class Node(Base):
         return self.point.x
 
     @property
-    def geojson(self) -> Dict[str, Any]:
+    def geojson(self) -> dict[str, Any]:
         """Convert spatial WKBElement point geometry into a JSON-serializable GeoJSON dict."""
         return shapely.geometry.mapping(self.point)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert Node model instance into a JSON-serializable dictionary."""
         return {
             "id": self.id,
