@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-fifteen-minute-city = "fifteen_minute_city:main"
+fifteen-minute-city = "fifteen_minute_city.main:main"
 
 [build-system]
 requires = ["uv_build>=0.11.24,<0.12.0"]
