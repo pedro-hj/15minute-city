@@ -4,6 +4,7 @@ import logging
 import os
 import pickle
 import subprocess as sp
+from pathlib import Path
 
 import geopandas as gpd
 import networkx as nx
@@ -12,13 +13,13 @@ import osmnx as ox
 from scipy.spatial import cKDTree
 from shapely.geometry import LineString
 
-from fifteen_minute_city.constants import PATH_OSM_MAPS, PATH_PBF_PATH
+from fifteen_minute_city.constants import PATH_OSM_MAPS
 
 logger = logging.getLogger(__name__)
 
 
 def load_osm_graph(
-    pbf_filename: str,
+    pbf_path: str | Path,
     region: dict,
     network_type: str = "walk",
     execution_id: int | None = None,
@@ -26,7 +27,11 @@ def load_osm_graph(
 ):
     os.makedirs(PATH_OSM_MAPS, exist_ok=True)
 
-    pbf_source_path = os.path.join(PATH_PBF_PATH, pbf_filename)
+    pbf_path = Path(pbf_path).expanduser().resolve()
+
+    if not Path(pbf_path).is_file():
+        raise FileNotFoundError(f"OSM PBF File not found: {pbf_path}")
+
     base_region_path = os.path.join(PATH_OSM_MAPS, region["city"])
 
     pbf_raw = f"{base_region_path}.osm.pbf"
@@ -66,7 +71,9 @@ def load_osm_graph(
     path_polygon = PATH_OSM_MAPS / f"{region['city']}_bounds.geojson"
     region_gdf[["geometry"]].to_file(path_polygon, driver="GeoJSON")
 
-    extract_cmd = f'osmium extract -p "{path_polygon}" "{pbf_source_path}" -o "{pbf_raw}" --overwrite'
+    extract_cmd = (
+        f'osmium extract -p "{path_polygon}" "{pbf_path}" -o "{pbf_raw}" --overwrite'
+    )
     sp.run(extract_cmd, shell=True, check=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
 
     # Converts the file of region to a pedestrian file
@@ -116,10 +123,12 @@ def load_services_geojson(
     # Filtering services in the analyzed region
     filter_services = (
         f'osmium tags-filter "{pbf_region_path}.osm.pbf" '
-        f'{"".join([f"nwr/{name}={','.join(services)} " for name, services in services.items()])}'
+        f"{''.join([f'nwr/{name}={",".join(services)} ' for name, services in services.items()])}"
         f'-o "{pbf_region_path}_services.osm.pbf" --overwrite'
     )
-    sp.run(filter_services, shell=True, check=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    sp.run(
+        filter_services, shell=True, check=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL
+    )
 
     # Exporting data from services to GeoJSON
     export = (

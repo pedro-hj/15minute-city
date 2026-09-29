@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 from typing import ClassVar
 
 import networkx as nx
@@ -29,11 +30,13 @@ class Region:
         locale: dict,
         network_type: str,
         speed: float,
+        pbf_path: str | Path,
         enable_db: bool = True,
     ):
         self.locale = locale
         self.network_type = network_type
         self.speed = speed
+        self.pbf_path = Path(pbf_path).expanduser().resolve()
         self.__graph = None
         self.__services = {}
         self.__path = None
@@ -68,11 +71,8 @@ class Region:
             "service": self.speed,
         }
 
-        folder = PATH_OSM_MAPS
-        folder.mkdir(exist_ok=True, parents=True)
-
         graph = load_osm_graph(
-            pbf_filename="sudeste-260825.osm.pbf",
+            pbf_path=self.pbf_path,
             region=self.locale,
             network_type=self.network_type,
             execution_id=self.execution_id,
