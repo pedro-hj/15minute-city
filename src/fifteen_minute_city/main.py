@@ -18,8 +18,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pbf", type=Path, required=True)
     parser.add_argument("--services", nargs="+", choices=SUPPORTED_SERVICES)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--overwrite", action="store_true")
 
     return parser
+
+
+def write_result(path: Path, serialized: str, *, overwrite: bool = False) -> None:
+    path_file = path.expanduser().resolve()
+    path_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(path_file, "x" if not overwrite else "w", encoding="utf-8") as file:
+        file.write(serialized + "\n")
 
 
 def main() -> None:
@@ -44,10 +52,12 @@ def main() -> None:
     if args.output is None:
         print(json_data)
     else:
-        path = args.output.expanduser().resolve()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "x", encoding="utf-8") as file:
-            file.write(json_data + "\n")
+        try:
+            write_result(args.output, json_data, overwrite=args.overwrite)
+        except FileExistsError:
+            parser.error(
+                "Já existe um arquivo no caminho escolhido; escolha outro ou use --overwrite"
+            )
 
 
 if __name__ == "__main__":
