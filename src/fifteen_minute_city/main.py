@@ -1,4 +1,5 @@
 import argparse
+import json
 from pathlib import Path
 
 from fifteen_minute_city.constants import SUPPORTED_SERVICES
@@ -16,6 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--enable-db", action="store_true")
     parser.add_argument("--pbf", type=Path, required=True)
     parser.add_argument("--services", nargs="+", choices=SUPPORTED_SERVICES)
+    parser.add_argument("--output", type=Path)
 
     return parser
 
@@ -38,7 +40,14 @@ def main() -> None:
     city.build_graph()
     city.locate_services(args.services)
     times = city.calculate_times(args.algorithm)
-    print(times)
+    json_data = json.dumps(times, ensure_ascii=False, indent=2)
+    if args.output is None:
+        print(json_data)
+    else:
+        path = args.output.expanduser().resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "x", encoding="utf-8") as file:
+            file.write(json_data + "\n")
 
 
 if __name__ == "__main__":
