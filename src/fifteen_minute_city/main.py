@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 
+from fifteen_minute_city.constants import SUPPORTED_SERVICES
 from fifteen_minute_city.core.modules.locales import Region
 
 
@@ -14,6 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--algorithm", default="dijkstra", choices=["dijkstra"])
     parser.add_argument("--enable-db", action="store_true")
     parser.add_argument("--pbf", type=Path, required=True)
+    parser.add_argument("--services", nargs="+", choices=SUPPORTED_SERVICES)
 
     return parser
 
@@ -34,9 +36,7 @@ def main() -> None:
         enable_db=args.enable_db,
     )
     city.build_graph()
-    city.locate_services(
-        ["bus_station", "school", "fuel", "bank", "hospital", "pharmacy", "supermarket"]
-    )
+    city.locate_services(args.services)
     times = city.calculate_times(args.algorithm)
     print(times)
 

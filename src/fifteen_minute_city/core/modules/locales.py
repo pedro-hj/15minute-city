@@ -3,12 +3,11 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import ClassVar
 
 import networkx as nx
 import osmnx as ox
 
-from fifteen_minute_city.constants import PATH_OSM_MAPS
+from fifteen_minute_city.constants import OSM_SERVICE_TAGS, PATH_OSM_MAPS
 from fifteen_minute_city.core.modules.algorithms import multi_source_algorithm
 from fifteen_minute_city.core.modules.osm_utils import (
     load_osm_graph,
@@ -20,11 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class Region:
-    __tags: ClassVar[dict] = {
-        "amenity": ["bus_station", "school", "fuel", "bank", "hospital", "pharmacy"],
-        "shop": ["supermarket"],
-    }
-
     def __init__(
         self,
         locale: dict,
@@ -90,12 +84,15 @@ class Region:
 
         return self.__graph
 
-    def locate_services(self, services: list, tags_config: dict | None = None) -> dict:
-        tags_to_use = tags_config if tags_config is not None else Region.__tags
-
-        s_formatted = {}
-        for name, tag in tags_to_use.items():
-            s_formatted[name] = list(set(services) & set(tag))
+    def locate_services(self, services: list[str] | None = None) -> dict:
+        if services is None:
+            s_formatted = OSM_SERVICE_TAGS
+        else:
+            s_formatted = {}
+            for name, tag in OSM_SERVICE_TAGS.items():
+                intersection = list(set(services) & set(tag))
+                if intersection:
+                    s_formatted[name] = intersection
 
         self.__services = load_services_geojson(
             G=self.__graph,
