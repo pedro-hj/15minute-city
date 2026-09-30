@@ -2,6 +2,7 @@ import argparse
 import json
 import re
 import unicodedata
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -75,24 +76,24 @@ def write_result(path: Path, serialized: str, *, overwrite: bool = False) -> Non
         file.write(serialized + "\n")
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> int:
 
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     locale = {"city": args.city, "country": args.country}
     if args.state:
         locale["state"] = args.state
 
-    city = Region(
+    region = Region(
         locale,
         args.network_type,
         args.speed_kmh,
         args.pbf,
         enable_db=args.enable_db,
     )
-    city.build_graph()
-    city.locate_services(args.services)
-    times = city.calculate_times(args.algorithm)
+    region.build_graph()
+    region.locate_services(args.services)
+    times = region.calculate_times(args.algorithm)
     json_data = json.dumps(times, ensure_ascii=False, indent=2)
 
     try:
@@ -109,7 +110,8 @@ def main() -> None:
             "Já existe um arquivo no caminho escolhido; escolha outro ou use --overwrite"
         )
     print(f"Result saved at {output_path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

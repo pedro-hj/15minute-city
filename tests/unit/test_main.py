@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from fifteen_minute_city.main import _slugify, resolve_output_path, write_result
+from fifteen_minute_city.main import _slugify, main, resolve_output_path, write_result
 
 
 @pytest.mark.parametrize(
@@ -73,7 +73,7 @@ def test_resolve_output_path(
     assert result == expected
 
 
-def test_write_result(tmp_path):
+def test_write_result(tmp_path) -> None:
     my_dir = tmp_path / "results/tests" / "test.json"
     data = "São Paulo"
     data2 = "Maranhão"
@@ -91,3 +91,10 @@ def test_write_result(tmp_path):
     write_result(my_dir, data2, overwrite=True)
 
     assert my_dir.read_text("utf-8") == data2 + "\n"
+
+
+def test_main_mandatory_arguments() -> None:
+    with pytest.raises(SystemExit) as error:
+        main([])
+
+    assert error.value.code == 2
