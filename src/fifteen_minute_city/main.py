@@ -53,18 +53,32 @@ def resolve_output_path(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--city", required=True)
-    parser.add_argument("--state")
-    parser.add_argument("--country", default="Brazil")
+    parser = argparse.ArgumentParser(
+        prog="fifteen-minute-city",
+        description="Provides statistics of reachability to a city's essential services.",
+    )
+    parser.add_argument("--city", required=True, help="Name of the city")
+    parser.add_argument("--state", help="Name of the state")
+    parser.add_argument("--country", default="Brazil", help="Name of the country")
     parser.add_argument("--network-type", default="walk", choices=["walk"])
     parser.add_argument("--speed-kmh", type=float, default=3.0)
     parser.add_argument("--algorithm", default="dijkstra", choices=["dijkstra"])
     parser.add_argument("--enable-db", action="store_true")
-    parser.add_argument("--pbf", type=Path, required=True)
-    parser.add_argument("--services", nargs="+", choices=SUPPORTED_SERVICES)
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--pbf", type=Path, required=True, help="Path of the PBF file")
+    parser.add_argument(
+        "--services",
+        nargs="+",
+        choices=SUPPORTED_SERVICES,
+        help="Selects which services will be analyzed. When it isn't used, all services are analyzed",
+    )
+    parser.add_argument(
+        "--output", type=Path, help="Path where the result will be saved"
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allows overwriting an output file if it exists",
+    )
 
     return parser
 
