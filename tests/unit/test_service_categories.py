@@ -1,8 +1,11 @@
 import geopandas as gpd
 import networkx as nx
+import pytest
 from shapely.geometry import Point
 
 from fifteen_minute_city.constants import SERVICE_CATEGORIES
+from fifteen_minute_city.core.modules.exceptions import ServiceNotSupportedError
+from fifteen_minute_city.core.modules.locales import Region
 from fifteen_minute_city.infrastructure.osm.services import (
     categorize_services,
     snap_services_to_graph,
@@ -84,3 +87,18 @@ def test_categorized_services_are_associated_with_graph_nodes_by_category():
     assert result.nodes_by_category == {"health": [10], "education": [20]}
     assert result.organizer_data()["health"][0][:2] == ["Hospital", 10]
     assert result.organizer_data()["education"][0][:2] == ["School", 20]
+
+
+def test_region_rejects_unknown_domain_category() -> None:
+    region = Region(
+        {"city": "Test", "country": "Brazil"},
+        network_type="walk",
+        speed=3,
+        enable_db=False,
+    )
+
+    with pytest.raises(
+        ServiceNotSupportedError,
+        match="Unsupported service categories: unknown",
+    ):
+        region.locate_services(["unknown"])

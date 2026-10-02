@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
-from fifteen_minute_city.constants import SUPPORTED_SERVICES
+from fifteen_minute_city.constants import SERVICE_CATEGORIES
 from fifteen_minute_city.core.modules.locales import Region
 
 
@@ -68,8 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--services",
         nargs="+",
-        choices=SUPPORTED_SERVICES,
-        help="Selects which services will be analyzed. When it isn't used, all services are analyzed",
+        choices=SERVICE_CATEGORIES,
+        help=(
+            "Selects which service categories will be analyzed. "
+            "When omitted, all categories are analyzed"
+        ),
     )
     parser.add_argument(
         "--output", type=Path, help="Path where the result will be saved"

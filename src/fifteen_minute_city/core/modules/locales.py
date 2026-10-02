@@ -4,16 +4,20 @@ import logging
 import time
 from pathlib import Path
 
+import geopandas as gpd
 import networkx as nx
 import osmnx as ox
 
-from fifteen_minute_city.constants import OSM_SERVICE_TAGS, PATH_OSM_MAPS
+from fifteen_minute_city.config import AnalysisSettings
+from fifteen_minute_city.constants import SERVICE_CATEGORIES
 from fifteen_minute_city.core.modules.algorithms import multi_source_algorithm
-from fifteen_minute_city.core.modules.osm_utils import (
-    load_osm_graph,
-    load_services_geojson,
-)
+from fifteen_minute_city.core.modules.exceptions import ServiceNotSupportedError
 from fifteen_minute_city.db.pipelines.algorithm_pipeline import AlgorithmPipeline
+from fifteen_minute_city.infrastructure.osm.graph import (
+    OSMGraphArtifact,
+    load_or_build_osm_graph,
+)
+from fifteen_minute_city.infrastructure.osm.services import load_services_from_pbf
 
 logger = logging.getLogger(__name__)
 
@@ -22,85 +26,151 @@ class Region:
     def __init__(
         self,
         locale: dict,
-        network_type: str,
-        speed: float,
-        pbf_path: str | Path,
-        enable_db: bool = True,
+        network_type: str = "walk",
+        speed: float = 3.0,
+        pbf_path: str | Path | None = None,
+        enable_db: bool = False,
+        threshold_minutes: float = 15.0,
+        cache_dir: str | Path = "data/cache",
+        boundary_path: str | Path | None = None,
     ):
+        if "city" not in locale:
+            raise ValueError("locale must contain a city")
+
+        if pbf_path is None:
+            self.settings = None
+            self.pbf_path = None
+        else:
+            self.settings = AnalysisSettings(
+                pbf_path=Path(pbf_path),
+                cache_dir=Path(cache_dir),
+                boundary_path=Path(boundary_path) if boundary_path else None,
+                network_type=network_type,
+                speed_kmh=speed,
+                threshold_minutes=threshold_minutes,
+            )
+            self.pbf_path = self.settings.pbf_path
+
         self.locale = locale
         self.network_type = network_type
         self.speed = speed
-        self.pbf_path = Path(pbf_path).expanduser().resolve()
         self.__graph = None
         self.__services = {}
-        self.__path = None
         self.enable_db = enable_db
+        self.threshold_minutes = threshold_minutes
         self.pipeline = AlgorithmPipeline() if enable_db else None
         self.execution_id = None
         self._start_time = None
+        self._graph_artifact: OSMGraphArtifact | None = None
+        self._node_id_map: dict[int, int] = {}
+        self._service_categories = dict(SERVICE_CATEGORIES)
+        self._boundary_source: str | None = None
+        self._boundary: gpd.GeoDataFrame | None = None
 
     def build_graph(self) -> nx.MultiDiGraph:
         self._start_time = time.time()
+        if self.settings is None:
+            raise ValueError("pbf_path is required to build the walking graph")
 
-        # Initialize execution in database if enabled
+        boundary = None
+        if self.settings.boundary_path is not None:
+            boundary = gpd.read_file(self.settings.boundary_path)
+            if boundary.empty or boundary.crs is None:
+                raise ValueError("boundary file must be non-empty and define a CRS")
+            self._boundary_source = str(self.settings.boundary_path)
+        elif self.pipeline:
+            boundary = self.pipeline.get_city_boundary(
+                self.locale["city"],
+                self.locale.get("country", "Brazil"),
+            )
+            if boundary is not None:
+                self._boundary_source = "database"
+        if boundary is None:
+            boundary = ox.geocode_to_gdf(self.locale)
+            self._boundary_source = "geocoder"
+        self._boundary = boundary
+
         if self.pipeline:
-            try:
-                ctx = self.pipeline.prepare_execution(
-                    city_name=self.locale["city"],
-                    country=self.locale.get("country", "Brazil"),
-                    speed_kmh=self.speed,
+            self.pipeline.save_city(
+                self.locale["city"],
+                self.locale.get("country", "Brazil"),
+                boundary,
+            )
+            context = self.pipeline.prepare_execution(
+                city_name=self.locale["city"],
+                country=self.locale.get("country", "Brazil"),
+                speed_kmh=self.speed,
+            )
+            self.execution_id = context.execution_id
+
+        try:
+            artifact = load_or_build_osm_graph(
+                self.settings.pbf_path,
+                boundary,
+                self.settings.cache_dir,
+                network_type=self.network_type,
+            )
+            graph = artifact.graph
+            for _origin, _destination, _key, edge_data in graph.edges(
+                keys=True, data=True
+            ):
+                edge_data["speed_kph"] = self.speed
+            graph = ox.add_edge_travel_times(graph)
+            self.__graph = graph
+            self._graph_artifact = artifact
+
+            if self.pipeline and self.execution_id:
+                self._node_id_map = self.pipeline.save_graph_nodes(
+                    self.execution_id, graph
                 )
-                self.execution_id = ctx.execution_id
-            except Exception as e:  # noqa: BLE001
-                logger.debug("Database execution initialization skipped: %s", e)
-                self.execution_id = None
+        except Exception as error:
+            if self.pipeline and self.execution_id:
+                self.pipeline.fail_execution(self.execution_id, str(error))
+            raise
 
-        hwy_speeds = {
-            "motorway": self.speed,
-            "trunk": self.speed,
-            "primary": self.speed,
-            "secondary": self.speed,
-            "tertiary": self.speed,
-            "residential": self.speed,
-            "service": self.speed,
-        }
-
-        graph = load_osm_graph(
-            pbf_path=self.pbf_path,
-            region=self.locale,
-            network_type=self.network_type,
-            execution_id=self.execution_id,
-            pipeline=self.pipeline,
+        logger.info(
+            "Graph for %s loaded (%s)",
+            self.locale["city"],
+            "cache" if artifact.cache_hit else "new build",
         )
-        graph = ox.add_edge_speeds(graph, hwy_speeds=hwy_speeds)
-        graph = ox.add_edge_travel_times(graph)
-
-        self.__graph = graph
-        self.__path = PATH_OSM_MAPS / self.locale["city"]
-
-        print(
-            f"Graph of region \033[1m{self.locale['city']}\033[0m successfully generated."
-        )
-
         return self.__graph
 
-    def locate_services(self, services: list[str] | None = None) -> dict:
-        if services is None:
-            s_formatted = OSM_SERVICE_TAGS
-        else:
-            s_formatted = {}
-            for name, tag in OSM_SERVICE_TAGS.items():
-                intersection = list(set(services) & set(tag))
-                if intersection:
-                    s_formatted[name] = intersection
+    def locate_services(
+        self,
+        categories: list[str] | None = None,
+        categories_config: dict[str, list[tuple[str, str]]] | None = None,
+    ) -> dict[str, list[int]]:
+        available_categories = categories_config or SERVICE_CATEGORIES
+        selected_categories = categories or list(available_categories)
 
-        self.__services = load_services_geojson(
-            G=self.__graph,
-            pbf_region_path=str(self.__path),
-            services=s_formatted,
-            execution_id=self.execution_id,
-            pipeline=self.pipeline,
+        unsupported_categories = set(selected_categories) - set(available_categories)
+        if unsupported_categories:
+            unsupported = ", ".join(sorted(unsupported_categories))
+            raise ServiceNotSupportedError(
+                f"Unsupported service categories: {unsupported}"
+            )
+
+        selected_config = {
+            category: available_categories[category] for category in selected_categories
+        }
+        self._service_categories = selected_config
+
+        if self.__graph is None or self._graph_artifact is None:
+            raise RuntimeError("build_graph() must be called before locating services")
+
+        loaded_services = load_services_from_pbf(
+            self.__graph,
+            self._graph_artifact.region_pbf_path,
+            selected_config,
         )
+        self.__services = loaded_services.nodes_by_category
+        logger.info("Services extracted from the municipal PBF")
+        if self.pipeline and self.execution_id:
+            self.pipeline.save_services_from_organizer(
+                self.execution_id,
+                loaded_services.organizer_data(),
+                osm_to_db_node_map=self._node_id_map,
+            )
         return self.__services
 
     def calculate_times(self, algorithm: str) -> list:

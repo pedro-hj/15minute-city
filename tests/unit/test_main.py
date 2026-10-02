@@ -4,7 +4,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from fifteen_minute_city.main import _slugify, main, resolve_output_path, write_result
+from fifteen_minute_city.main import (
+    _slugify,
+    build_parser,
+    main,
+    resolve_output_path,
+    write_result,
+)
 
 
 @pytest.mark.parametrize(
@@ -98,3 +104,19 @@ def test_main_mandatory_arguments() -> None:
         main([])
 
     assert error.value.code == 2
+
+
+def test_parser_accepts_service_categories() -> None:
+    args = build_parser().parse_args(
+        [
+            "--city",
+            "Praia Grande",
+            "--pbf",
+            "data/input/brazil.osm.pbf",
+            "--services",
+            "health",
+            "food",
+        ]
+    )
+
+    assert args.services == ["health", "food"]
