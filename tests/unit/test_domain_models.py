@@ -113,7 +113,6 @@ def test_category_accessibility_derives_percentages_and_score() -> None:
     assert result.unreachable_weight == 100
     assert result.coverage_percentage == 75
     assert result.unreachable_percentage == 10
-    assert result.score == 75
 
 
 def test_category_accessibility_rejects_inconsistent_weights() -> None:
@@ -154,8 +153,10 @@ def test_accessibility_report_derives_overall_metrics_and_serializes() -> None:
 
     assert report.overall_coverage_percentage == 75
     assert report.overall_unreachable_percentage == 10
-    assert report.overall_score == 75
-    assert report.to_dict()["categories"]["health"]["score"] == 75
+    serialized = report.to_dict()
+    assert serialized["categories"]["health"]["coverage_percentage"] == 75
+    assert "score" not in serialized["categories"]["health"]
+    assert "overall_score" not in serialized
 
 
 def test_accessibility_report_rejects_mismatched_category_key() -> None:
@@ -218,7 +219,17 @@ def test_accessibility_comparison_derives_deltas() -> None:
     assert comparison.category_unreachable_delta == {"health": 0}
     assert comparison.overall_coverage_delta == 15
     assert comparison.overall_unreachable_delta == 0
-    assert comparison.to_dict()["overall_coverage_delta"] == 15
+    serialized = comparison.to_dict()
+    assert serialized == {
+        "calculation": "population_report - node_report",
+        "unit": "percentage_points",
+        "category_coverage_delta": {"health": 15},
+        "category_unreachable_delta": {"health": 0},
+        "overall_coverage_delta": 15,
+        "overall_unreachable_delta": 0,
+    }
+    assert "population_report" not in serialized
+    assert "node_report" not in serialized
 
 
 def test_accessibility_comparison_requires_same_categories() -> None:

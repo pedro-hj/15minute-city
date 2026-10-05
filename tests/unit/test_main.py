@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from fifteen_minute_city.main import (
     _slugify,
     build_parser,
+    format_output,
     main,
     resolve_output_path,
     write_result,
@@ -113,6 +115,8 @@ def test_parser_accepts_service_categories() -> None:
             "Praia Grande",
             "--pbf",
             "data/input/brazil.osm.pbf",
+            "--population-grid",
+            "data/input/grade.zip",
             "--services",
             "health",
             "food",
@@ -120,3 +124,46 @@ def test_parser_accepts_service_categories() -> None:
     )
 
     assert args.services == ["health", "food"]
+
+
+def test_format_output_simple_uses_only_population_scores() -> None:
+    population_report = SimpleNamespace(
+        categories={
+            "health": SimpleNamespace(coverage_percentage=82.5),
+            "education": SimpleNamespace(coverage_percentage=71.0),
+        },
+        overall_coverage_percentage=64.25,
+    )
+    outcome = SimpleNamespace(
+        population_report=population_report,
+        comparison=object(),
+    )
+    locale = {"city": "Praia Grande", "state": "São Paulo", "country": "Brazil"}
+
+    result = format_output(outcome, locale=locale, output_mode="simple")
+
+    assert result == {
+        "location": locale,
+        "category_results": {"health": 82.5, "education": 71.0},
+        "overall_result": 64.25,
+    }
+    assert "comparison" not in result
+
+
+def test_format_output_detailed_preserves_complete_outcome() -> None:
+    expected = {
+        "comparison": {
+            "calculation": "population_report - node_report",
+            "unit": "percentage_points",
+            "overall_coverage_delta": -4.5,
+        }
+    }
+    outcome = SimpleNamespace(to_dict=lambda: expected)
+
+    result = format_output(
+        outcome,
+        locale={"city": "Praia Grande", "country": "Brazil"},
+        output_mode="detailed",
+    )
+
+    assert result == expected

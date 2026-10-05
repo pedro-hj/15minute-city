@@ -24,7 +24,7 @@ def test_weighted_median_uses_population_weight() -> None:
     assert _weighted_median([]) is None
 
 
-def test_weighted_coverage_overall_score_and_unreachable_population() -> None:
+def test_weighted_coverage_and_unreachable_population() -> None:
     origins = OriginSet(
         strategy="population_grid",
         weight_unit="population",
@@ -51,7 +51,7 @@ def test_weighted_coverage_overall_score_and_unreachable_population() -> None:
     assert report.categories["education"].coverage_percentage == 30.0
     assert report.categories["education"].unreachable_percentage == 10.0
     assert report.overall_coverage_percentage == 30.0
-    assert report.overall_score == 30.0
+    assert report.overall_coverage_percentage == 30.0
     assert report.overall_unreachable_percentage == 10.0
 
 
@@ -72,7 +72,7 @@ def test_empty_category_marks_every_origin_unreachable() -> None:
     assert metrics.coverage_percentage == 0.0
     assert metrics.unreachable_percentage == 100.0
     assert metrics.mean_travel_time_minutes is None
-    assert report.overall_score == 0.0
+    assert report.overall_coverage_percentage == 0.0
 
 
 def test_directed_graph_calculates_route_from_origin_to_service() -> None:

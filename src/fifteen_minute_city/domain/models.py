@@ -134,10 +134,6 @@ class CategoryAccessibility:
     def unreachable_percentage(self) -> float:
         return round(100.0 * self.unreachable_weight / self.total_weight, 6)
 
-    @property
-    def score(self) -> float:
-        return self.coverage_percentage
-
 
 @dataclass(frozen=True, slots=True)
 class AccessibilityReport:
@@ -186,10 +182,6 @@ class AccessibilityReport:
     def overall_unreachable_percentage(self) -> float:
         return round(100.0 * self.overall_unreachable_weight / self.total_weight, 6)
 
-    @property
-    def overall_score(self) -> float:
-        return self.overall_coverage_percentage
-
     def to_dict(self, *, include_details: bool = False) -> dict[str, Any]:
         categories = {}
         for code, result in self.categories.items():
@@ -201,7 +193,6 @@ class AccessibilityReport:
                 "unreachable_weight": result.unreachable_weight,
                 "coverage_percentage": result.coverage_percentage,
                 "unreachable_percentage": result.unreachable_percentage,
-                "score": result.score,
                 "mean_travel_time_minutes": result.mean_travel_time_minutes,
                 "median_travel_time_minutes": result.median_travel_time_minutes,
             }
@@ -228,7 +219,6 @@ class AccessibilityReport:
             "categories": categories,
             "overall_coverage_percentage": self.overall_coverage_percentage,
             "overall_unreachable_percentage": self.overall_unreachable_percentage,
-            "overall_score": self.overall_score,
             "metadata": self.metadata,
         }
 
@@ -289,8 +279,8 @@ class AccessibilityComparison:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "population_report": self.population_report.to_dict(),
-            "node_report": self.node_report.to_dict(),
+            "calculation": "population_report - node_report",
+            "unit": "percentage_points",
             "category_coverage_delta": self.category_coverage_delta,
             "category_unreachable_delta": self.category_unreachable_delta,
             "overall_coverage_delta": self.overall_coverage_delta,
