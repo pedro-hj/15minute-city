@@ -19,19 +19,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv package manager from official image
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.17 /uv /uvx /bin/
 
 WORKDIR /app
 
 # Install project dependencies first (for optimal Docker layer caching)
-COPY pyproject.toml .python-version ./
-RUN uv sync --no-install-project --no-cache
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-install-project --no-cache
 
 # Copy project source code
 COPY . .
 
 # Install the project itself
-RUN uv sync --no-cache
+RUN uv sync --frozen --no-cache
 
-# Default command to run the mobility analysis
-CMD ["python", "-m", "fifteen_minute_city.main"]
+# Accept the same explicit CLI parameters used outside the container.
+ENTRYPOINT ["fifteen-minute-city"]
+CMD ["--help"]

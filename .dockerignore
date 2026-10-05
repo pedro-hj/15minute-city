@@ -16,8 +16,7 @@ __pycache__/
 !.env.example
 
 # Large Data & Outputs (Mounted via Volumes)
-src/fifteen_minute_city/core/pbfs/
-src/fifteen_minute_city/core/outputs/
+data/
 temp/
 
 # IDE & Editor files
