@@ -8,6 +8,10 @@ from fifteen_minute_city.domain.models import (
     OriginAccessibility,
     OriginSet,
 )
+from fifteen_minute_city.domain.reachability import (
+    analyze_accessibility,
+    compare_accessibility,
+)
 
 __all__ = [
     "AccessibilityComparison",
@@ -16,4 +20,6 @@ __all__ = [
     "Origin",
     "OriginAccessibility",
     "OriginSet",
+    "analyze_accessibility",
+    "compare_accessibility",
 ]
