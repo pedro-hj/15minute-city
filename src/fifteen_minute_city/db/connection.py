@@ -1,5 +1,6 @@
 import os
 from collections.abc import Generator
+from contextlib import contextmanager
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -21,7 +22,9 @@ def get_database_url() -> str:
     # Normalize driver prefix for SQLAlchemy 2.0 (e.g., postgres:// or postgresql:// -> postgresql+psycopg://)
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
-    elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+psycopg://"):
+    elif db_url.startswith("postgresql://") and not db_url.startswith(
+        "postgresql+psycopg://"
+    ):
         db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
     return db_url
@@ -69,14 +72,25 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
+@contextmanager
+def session_scope() -> Generator[Session, None, None]:
+    """Provide a deterministic SQLAlchemy session context with rollback on errors."""
+    session = get_session_factory()()
+    try:
+        yield session
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def check_db_connection() -> dict:
     """Validate database connectivity and verify PostGIS extension status."""
     engine = get_db_engine()
     with engine.connect() as connection:
         pg_version = connection.execute(text("SELECT version();")).scalar()
-        postgis_version = connection.execute(
-            text("SELECT PostGIS_Version();")
-        ).scalar()
+        postgis_version = connection.execute(text("SELECT PostGIS_Version();")).scalar()
 
         return {
             "status": "connected",

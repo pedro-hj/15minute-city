@@ -1,51 +1,24 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from fifteen_minute_city.constants import SERVICE_CATEGORIES
 from fifteen_minute_city.db.models.category import CategoryOsmTag, ServiceCategory
+
+CATEGORY_METADATA = {
+    "health": {"display_name": "Health", "moreno_pillar": "health"},
+    "education": {"display_name": "Education", "moreno_pillar": "education"},
+    "food": {"display_name": "Food", "moreno_pillar": "commerce"},
+    "culture": {"display_name": "Culture", "moreno_pillar": "entertainment"},
+}
 
 DEFAULT_CATEGORIES_DATA = [
     {
-        "code": "bus_station",
-        "display_name": "Bus Station",
-        "moreno_pillar": "living",
-        "osm_tags": [("amenity", "bus_station"), ("highway", "bus_stop")],
-    },
-    {
-        "code": "school",
-        "display_name": "School",
-        "moreno_pillar": "education",
-        "osm_tags": [("amenity", "school"), ("amenity", "kindergarten")],
-    },
-    {
-        "code": "fuel",
-        "display_name": "Fuel Station",
-        "moreno_pillar": "living",
-        "osm_tags": [("amenity", "fuel")],
-    },
-    {
-        "code": "bank",
-        "display_name": "Bank / Financial Service",
-        "moreno_pillar": "commerce",
-        "osm_tags": [("amenity", "bank"), ("amenity", "atm")],
-    },
-    {
-        "code": "hospital",
-        "display_name": "Hospital / Healthcare Center",
-        "moreno_pillar": "health",
-        "osm_tags": [("amenity", "hospital"), ("amenity", "clinic")],
-    },
-    {
-        "code": "pharmacy",
-        "display_name": "Pharmacy",
-        "moreno_pillar": "health",
-        "osm_tags": [("amenity", "pharmacy")],
-    },
-    {
-        "code": "supermarket",
-        "display_name": "Supermarket / Grocery",
-        "moreno_pillar": "commerce",
-        "osm_tags": [("shop", "supermarket"), ("shop", "convenience")],
-    },
+        "code": code,
+        "display_name": CATEGORY_METADATA[code]["display_name"],
+        "moreno_pillar": CATEGORY_METADATA[code]["moreno_pillar"],
+        "osm_tags": osm_tags,
+    }
+    for code, osm_tags in SERVICE_CATEGORIES.items()
 ]
 
 
@@ -85,6 +58,19 @@ def seed_default_categories(db: Session) -> list[ServiceCategory]:
                     osm_value=val,
                 )
                 db.add(tag_mapping)
+        else:
+            category.display_name = data["display_name"]
+            category.moreno_pillar = data["moreno_pillar"]
+            existing_tags = {(tag.osm_key, tag.osm_value) for tag in category.osm_tags}
+            for key, val in data["osm_tags"]:
+                if (key, val) not in existing_tags:
+                    db.add(
+                        CategoryOsmTag(
+                            category_id=category.id,
+                            osm_key=key,
+                            osm_value=val,
+                        )
+                    )
 
         seeded_categories.append(category)
 
