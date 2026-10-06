@@ -22,6 +22,25 @@ services:
       - /app/.venv
     command: ["--help"]
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fifteen_minute_city_api
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PYTHONPATH=/app/src
+      - PYTHONUNBUFFERED=1
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DATABASE_URL=${API_DATABASE_URL:-${DATABASE_URL:-}}
+    entrypoint: ["fifteen-minute-city-api"]
+    ports:
+      - "${API_PORT:-8000}:8000"
+
   # Optional local PostGIS database for offline development and local testing
   db-local:
     image: postgis/postgis:16-3.4
