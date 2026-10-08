@@ -2,14 +2,14 @@
 
 ## 1. Catálogo completo de endpoints
 
-Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são substituídos por valores reais.
+Os caminhos abaixo usam `GET`, exceto a solicitação pública de análise, que usa `POST`. Os parâmetros entre chaves são substituídos por valores reais.
 
 | Método e caminho | Finalidade |
 | --- | --- |
 | `GET /health` | Verifica se o processo HTTP está respondendo (sem chave). |
 | `GET /api/v1/version` | Informa nome e versão da API. |
 | `GET /api/v1/cities` | Lista municípios cadastrados. |
-| `POST /api/v1/analyses` | Solicita uma análise pública pelo código IBGE (sem chave, sujeita a limite de taxa). |
+| `POST /api/v1/analyses` | Solicita uma análise pública por cidade, estado e país (sem chave, sujeita a limite de taxa). |
 | `GET /api/v1/analyses/{request_id}` | Consulta o andamento de uma solicitação (sem chave). |
 | `GET /api/v1/cities/{city_id}` | Obtém um município específico. |
 | `GET /api/v1/categories` | Lista as categorias registradas. |
@@ -143,7 +143,7 @@ A resposta contém dados de identificação do município, estratégia, categori
 ### 4.1. Solicitação pública de análises
 
 O serviço permite que qualquer usuário **solicite** o cálculo de um município
-brasileiro, sem precisar de `X-API-Key`. As rotas de consulta de indicadores
+brasileiro informando nome da cidade, estado e país, sem precisar de `X-API-Key`. As rotas de consulta de indicadores
 existentes continuam protegidas pela chave original. Por segurança, o processamento
 nunca ocorre durante o HTTP: a solicitação entra na fila do worker.
 
@@ -151,7 +151,7 @@ nunca ocorre durante o HTTP: a solicitação entra na fila do worker.
 POST /api/v1/analyses
 Content-Type: application/json
 
-{"ibge_code": "3541000"}
+{"city": "Praia Grande", "state": "São Paulo", "country": "Brazil"}
 ```
 
 A resposta `202 Accepted` traz `request_id`, `ibge_code`, `city`, `state`,
@@ -163,6 +163,11 @@ GET /api/v1/analyses/{request_id}
 ```
 
 Os estados possíveis são `queued`, `processing`, `completed` e `error`.
+O sistema resolve o código IBGE internamente a partir dos três campos e o
+usa apenas para identificar e deduplicar municípios. Aceita nomes com ou sem
+acentos e siglas de estados. Como os dados locais cobrem apenas o Brasil,
+solicitações de outros países retornam `422`.
+
 Se houver execução concluída para o código IBGE, o POST retorna `200 OK`
 com a URL dos resultados existentes, sem consumir nova cota. Se já houver
 tarefa ativa, retorna `202` com o mesmo `request_id`, também sem consumir cota.

@@ -112,11 +112,16 @@ def test_public_code_validation_and_protected_ip_hash(monkeypatch):
         analysis_service._requester_hash("spoofed")
     assert exc.value.status_code == 503
 
-    assert AnalysisSubmission(ibge_code="3541000").ibge_code == "3541000"
+    payload = AnalysisSubmission(
+        city=" Praia Grande ", state="São Paulo", country="Brazil"
+    )
+    assert payload.city == "Praia Grande"
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        AnalysisSubmission(ibge_code="999")
+        AnalysisSubmission(city="  ", state="São Paulo", country="Brazil")
+    with pytest.raises(ValidationError):
+        AnalysisSubmission(ibge_code="3541000")
 
 
 def test_ibge_code_resolution_is_strict_and_non_dynamic(monkeypatch):
@@ -156,3 +161,84 @@ def test_public_submission_has_no_api_key_requirement():
     operation = app.openapi()["paths"]["/api/v1/analyses"]["post"]
     assert "security" not in operation
     assert "/api/v1/analyses/{request_id}" in app.openapi()["paths"]
+
+
+def test_named_municipalities_resolve_to_official_codes(monkeypatch):
+    from fifteen_minute_city.infrastructure.ibge import municipality_by_location
+
+    lookup = {
+        "SP": (("Praia Grande", "3541000"), ("São Vicente", "3551009")),
+        "SC": (("Praia Grande", "4213807"),),
+    }
+    monkeypatch.setattr(
+        ibge, "_municipalities_for_state", lambda uf: lookup[uf]
+    )
+    assert municipality_by_location("praia grande", "Sao Paulo", "BR") == (
+        "3541000", "Praia Grande", "São Paulo"
+    )
+    assert municipality_by_location("PRAIA GRANDE", "SC", "Brasil") == (
+        "4213807", "Praia Grande", "Santa Catarina"
+    )
+    with pytest.raises(ValueError, match="not found"):
+        municipality_by_location("inexistente", "São Paulo", "Brazil")
+    with pytest.raises(ValueError, match="Only cities in Brazil"):
+        municipality_by_location("Praia Grande", "SP", "Portugal")
+    with pytest.raises(ValueError, match="state not recognized"):
+        municipality_by_location("Praia Grande", "ZZ", "Brasil")
+
+
+def test_official_state_municipality_listing_is_cached(monkeypatch):
+    seen = []
+
+    def fake_fetch(url, max_bytes):
+        seen.append((url, max_bytes))
+        return [{"id": 3541000, "nome": "Praia Grande"}]
+
+    monkeypatch.setattr(ibge, "_fetch_json", fake_fetch)
+    ibge._municipalities_for_state.cache_clear()
+    expected = (("Praia Grande", "3541000"),)
+    assert ibge._municipalities_for_state("SP") == expected
+    assert ibge._municipalities_for_state("SP") == expected
+    assert len(seen) == 1
+    assert seen[0][0].endswith("/estados/SP/municipios")
+
+
+def test_post_accepts_location_without_ibge_code_or_api_key(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fifteen_minute_city.api.app import app
+    from fifteen_minute_city.api import analysis_routes
+
+    seen = []
+
+    def fake_resolve(city, state, country):
+        seen.append(("resolve", city, state, country))
+        return "3541000", "Praia Grande", "São Paulo"
+
+    def fake_submit(code, city, state, ip):
+        seen.append(("submit", code, city, state, ip))
+        return {
+            "request_id": "test-uuid",
+            "ibge_code": code,
+            "city": city,
+            "state": state,
+            "status": "queued",
+            "requested_at": None,
+            "city_id": None,
+            "results_url": None,
+        }, 202
+
+    monkeypatch.setattr(analysis_routes, "municipality_by_location", fake_resolve)
+    monkeypatch.setattr(analysis_routes, "submit", fake_submit)
+    response = TestClient(app).post(
+        "/api/v1/analyses",
+        json={"city": "Praia Grande", "state": "São Paulo", "country": "Brazil"},
+    )
+    assert response.status_code == 202
+    assert response.json()["ibge_code"] == "3541000"
+    assert seen[0] == ("resolve", "Praia Grande", "São Paulo", "Brazil")
+    assert seen[1][0:4] == ("submit", "3541000", "Praia Grande", "São Paulo")
+
+    invalid = TestClient(app).post(
+        "/api/v1/analyses", json={"ibge_code": "3541000"}
+    )
+    assert invalid.status_code == 422

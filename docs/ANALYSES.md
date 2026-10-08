@@ -4,13 +4,13 @@ Esta funcionalidade ainda deve ser aprovada e preparada antes de qualquer merge 
 
 ## Contrato HTTP
 
-- `POST /api/v1/analyses` com `{"ibge_code":"3541000"}`: admite um trabalho público.
+- `POST /api/v1/analyses` com `{"city":"Praia Grande","state":"São Paulo","country":"Brazil"}`: admite um trabalho público.
 - `GET /api/v1/analyses/{request_id}`: informa o estado de um trabalho.
 - As duas rotas são públicas, mas as rotas existentes `GET /api/v1/cities/...` continuam exigindo `X-API-Key`.
 - `202`: criou trabalho ou retornou trabalho ativo da mesma cidade; `200`: resultado já existente.
 - `429` com `Retry-After`: IP já iniciou outra tarefa nos últimos 3600 segundos.
 - `503` com `Retry-After`: limite de 10 tarefas ativas atingido.
-- `422`: código IBGE inválido; `503`: IBGE indisponível ou servidor não configurado.
+- `422`: município, estado ou país não reconhecido (ou dados inválidos); `503`: IBGE indisponível ou servidor não configurado.
 - Consulta ao andamento aceita somente o UUID aleatório da tarefa.
 - Endereços de usuários ficam no banco somente como HMAC-SHA256; não são armazenados em claro.
 
@@ -26,7 +26,11 @@ utilização indexa o bounding box real de cada shapefile ZIP via `pyogrio`
 e grava o catálogo em `data/cache/population-grids.json`. Mudanças de tamanho
 ou data de modificação invalidam esse catálogo.
 
-Para cada código IBGE, a malha municipal oficial é baixada da API do IBGE e
+O usuário informa cidade, estado e país; o sistema resolve o código IBGE consultando
+os municípios oficiais da UF, sem exigir o código no pedido. Aceita siglas de
+estados, diferenças de maiúsculas e acentos. Apenas o Brasil é aceito nesta fase.
+
+Para cada código IBGE resolvido, a malha municipal oficial é baixada da API do IBGE e
 armazenada em `data/cache/boundaries/`. Todos os ZIPs candidatos são filtrados
 espacialmente, e a mescla elimina sobreposições por `ID_UNICO`.
 
@@ -129,7 +133,7 @@ servidores diferentes sem implementar lease global no PostgreSQL.
 1. Rodar testes unitários e `alembic upgrade head --sql` no CI.
 2. Em homologação, usar credenciais e base de dados separadas para o
    processamento (não consumir a base de produção para testes).
-3. Criar trabalho para município sem análise: `202` e estado `queued`.
+3. Criar trabalho por nome, estado e país para município sem análise: `202` e estado `queued`.
 4. Repetir a mesma cidade: mesmo `request_id`, não cria tarefa adicional.
 5. Solicitar segunda cidade do mesmo IP antes de uma hora: `429` e `Retry-After`.
 6. Solicitar depois de uma hora: deve ser admitido se há capacidade.

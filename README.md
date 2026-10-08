@@ -165,8 +165,10 @@ uv run --no-project --with reportlab==4.4.9 \
 
 ## Análises públicas sob demanda (proposta em revisão)
 
-Uma requisição `POST /api/v1/analyses` recebe `{"ibge_code":"3541000"}`
-e cria uma tarefa para o worker, sem bloquear o processo HTTP. A rota
+Uma requisição `POST /api/v1/analyses` recebe
+`{"city":"Praia Grande","state":"São Paulo","country":"Brazil"}`
+e resolve o código IBGE internamente antes de criar uma tarefa para o worker,
+sem bloquear o processo HTTP. A rota
 `GET /api/v1/analyses/{request_id}` informa se a execução está em fila,
 em processamento, concluída ou com erro. Ambas são públicas, sem API key.
 Os endpoints originais de consulta de indicadores continuam protegidos.
