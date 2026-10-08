@@ -127,13 +127,37 @@ uv run ruff format --check src tests
 
 ## API de leitura
 
-Os resultados persistidos também podem ser consultados por uma API FastAPI
-protegida pelo cabeçalho `X-API-Key`:
+A API FastAPI disponibiliza consultas aos indicadores já calculados e
+persistidos, sem executar novas análises geográficas. Para consultar
+`/api/v1/`, informe a credencial `X-API-Key` fornecida pelo administrador.
 
 ```bash
 uv run fifteen-minute-city-api
 ```
 
-Com o servidor em execução, abra `http://localhost:8000/docs`. Consulte
-[`docs/API.md`](docs/API.md) para configuração, rotas disponíveis e implantação
-com Docker.
+A documentação oficial oferece instruções de instalação, exemplos de
+requisições, todos os endpoints e o significado dos indicadores:
+
+- **[Manual de uso da API (PDF)](docs/API-manual.pdf)** - versão para consulta e impressão.
+- **[Manual da API (Markdown)](docs/API.md)** - fonte oficial, atualizada junto ao código.
+
+A documentação interativa do FastAPI também está disponível em
+`http://127.0.0.1:8000/docs` na VPS. O acesso externo a esta rota
+depende da configuração do Nginx.
+
+### Política de manutenção da documentação
+
+Alterações de rotas, autenticação, parâmetros, métricas, respostas ou
+versionamento da API devem atualizar `docs/API.md` no mesmo pull request.
+O teste `tests/unit/test_api_documentation.py` identifica endpoints e
+métricas públicas não documentadas. O workflow
+`.github/workflows/api-manual.yml` gera e publica automaticamente o PDF
+sempre que a API ou o manual mudar. Revise também exemplos e semântica,
+pois esses detalhes não podem ser garantidos apenas por testes automáticos.
+
+Para gerar a versão PDF localmente:
+
+```bash
+uv run --no-project --with reportlab==4.4.9 \
+  python scripts/generate_api_manual.py
+```
