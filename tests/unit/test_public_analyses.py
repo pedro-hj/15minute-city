@@ -49,8 +49,12 @@ def _graph():
 def test_tile_catalog_discovers_overlapping_tiles_from_geography(tmp_path):
     input_dir = tmp_path / "input"
     input_dir.mkdir()
-    west = _tile(input_dir, "grade_id04", box(-46.01, -24.01, -45.99, -23.99), 80, "west")
-    east = _tile(input_dir, "grade_id13", box(-45.91, -24.01, -45.89, -23.99), 20, "east")
+    west = _tile(
+        input_dir, "grade_id04", box(-46.01, -24.01, -45.99, -23.99), 80, "west"
+    )
+    east = _tile(
+        input_dir, "grade_id13", box(-45.91, -24.01, -45.89, -23.99), 20, "east"
+    )
     _tile(input_dir, "grade_id14", box(-40.01, -20.01, -39.99, -19.99), 10, "far")
 
     boundary = gpd.GeoDataFrame(
@@ -88,8 +92,11 @@ def test_deduplicates_cell_ids_from_overlapping_archives(tmp_path):
         crs="EPSG:4326",
     )
     origins = load_population_grid(
-        [a, b], _graph(), population_column="TOTAL",
-        id_column="ID_UNICO", boundary=boundary,
+        [a, b],
+        _graph(),
+        population_column="TOTAL",
+        id_column="ID_UNICO",
+        boundary=boundary,
     )
     assert origins.total_weight == 80
     assert len(origins.origins) == 1

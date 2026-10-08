@@ -35,7 +35,9 @@ def _describe(path: Path) -> GridTile:
     extent = info.get("total_bounds")
     if extent is None:
         raise ValueError(f"{path.name} has no spatial extent")
-    converter = Transformer.from_crs(CRS.from_user_input(info["crs"]), "EPSG:4326", always_xy=True)
+    converter = Transformer.from_crs(
+        CRS.from_user_input(info["crs"]), "EPSG:4326", always_xy=True
+    )
     bounds = converter.transform_bounds(*[float(x) for x in extent], densify_pts=21)
     stat = path.stat()
     return GridTile(
@@ -58,7 +60,11 @@ def grid_catalog(
         raise FileNotFoundError(f"No grade_id*.zip population tiles in {input_dir}")
 
     manifest = [
-        {"name": item.name, "size": item.stat().st_size, "mtime_ns": item.stat().st_mtime_ns}
+        {
+            "name": item.name,
+            "size": item.stat().st_size,
+            "mtime_ns": item.stat().st_mtime_ns,
+        }
         for item in files
     ]
     catalog_path = cache_dir / "population-grids.json"

@@ -107,8 +107,12 @@ def get_city_boundary_gdf(
 
 
 def save_city_boundary_from_gdf(
-    db: Session, name: str, country: str, gdf: gpd.GeoDataFrame,
-    ibge_code: str | None = None, state: str | None = None,
+    db: Session,
+    name: str,
+    country: str,
+    gdf: gpd.GeoDataFrame,
+    ibge_code: str | None = None,
+    state: str | None = None,
 ) -> City:
     """
     Save or update the city boundary polygon from a GeoPandas GeoDataFrame.
@@ -130,6 +134,10 @@ def save_city_boundary_from_gdf(
     geom_data = features[0].get("geometry") if features else None
 
     return get_or_create_city(
-        db, name=name, country=country, geom_boundary_geojson=geom_data,
-        ibge_code=ibge_code, state=state,
+        db,
+        name=name,
+        country=country,
+        geom_boundary_geojson=geom_data,
+        ibge_code=ibge_code,
+        state=state,
     )

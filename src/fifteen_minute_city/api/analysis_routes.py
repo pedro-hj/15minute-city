@@ -6,7 +6,10 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from fifteen_minute_city.api.analysis_service import request_status, submit
-from fifteen_minute_city.infrastructure.ibge import IbgeUnavailable, municipality_by_code
+from fifteen_minute_city.infrastructure.ibge import (
+    IbgeUnavailable,
+    municipality_by_code,
+)
 
 
 class AnalysisSubmission(BaseModel):

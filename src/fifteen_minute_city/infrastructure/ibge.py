@@ -16,12 +16,11 @@ class IbgeUnavailable(Exception):
 def municipality_by_code(ibge_code: str) -> tuple[str, str]:
     if len(ibge_code) != 7 or not ibge_code.isascii() or not ibge_code.isdigit():
         raise ValueError("Invalid seven-digit IBGE municipality code")
-    url = (
-        "https://servicodados.ibge.gov.br/api/v1/localidades/"
-        f"municipios/{ibge_code}"
-    )
+    url = f"https://servicodados.ibge.gov.br/api/v1/localidades/municipios/{ibge_code}"
     try:
-        with urlopen(Request(url, headers={"Accept": "application/json"}), timeout=8) as response:
+        with urlopen(
+            Request(url, headers={"Accept": "application/json"}), timeout=8
+        ) as response:
             data = response.read(64_001)
     except HTTPError as exc:
         if exc.code == 404:

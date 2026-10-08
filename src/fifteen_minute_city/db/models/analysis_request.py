@@ -32,8 +32,12 @@ class AnalysisRequest(Base):
     requested_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    started_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    finished_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     result_city_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("city.id", ondelete="SET NULL"), nullable=True
     )

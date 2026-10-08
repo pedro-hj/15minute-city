@@ -83,9 +83,7 @@ def load_population_grid(
     boundary: gpd.GeoDataFrame | None = None,
 ) -> OriginSet:
     """Load, municipally filter, and snap a population grid to the graph."""
-    paths = (
-        [path] if isinstance(path, (str, Path)) else list(path)
-    )
+    paths = [path] if isinstance(path, (str, Path)) else list(path)
     if not paths:
         raise ValueError("at least one population grid is required")
     grid_paths = [Path(item).expanduser().resolve() for item in paths]

@@ -77,11 +77,17 @@ class AlgorithmPipeline:
         Retrieve the geographic boundary GeoDataFrame from the database if already stored.
         """
         with session_scope() as db:
-            return get_city_boundary_gdf(db, name=city_name, country=country, ibge_code=ibge_code)
+            return get_city_boundary_gdf(
+                db, name=city_name, country=country, ibge_code=ibge_code
+            )
 
     def save_city(
-        self, city_name: str, country: str, boundary_gdf: gpd.GeoDataFrame,
-        ibge_code: str | None = None, state: str | None = None,
+        self,
+        city_name: str,
+        country: str,
+        boundary_gdf: gpd.GeoDataFrame,
+        ibge_code: str | None = None,
+        state: str | None = None,
     ) -> City:
         """
         [PERSISTENCE POINT 1]
@@ -89,8 +95,12 @@ class AlgorithmPipeline:
         """
         with session_scope() as db:
             return save_city_boundary_from_gdf(
-                db, name=city_name, country=country, gdf=boundary_gdf,
-                ibge_code=ibge_code, state=state,
+                db,
+                name=city_name,
+                country=country,
+                gdf=boundary_gdf,
+                ibge_code=ibge_code,
+                state=state,
             )
 
     def prepare_execution(

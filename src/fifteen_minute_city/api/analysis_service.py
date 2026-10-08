@@ -8,7 +8,7 @@ import ipaddress
 import math
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 
 from fastapi import HTTPException
@@ -28,9 +28,9 @@ def request_session_factory() -> sessionmaker:
     if not url:
         raise HTTPException(503, "Public analysis requests are not configured")
     if url.startswith("postgres://"):
-        url = "postgresql+psycopg://" + url[len("postgres://"):]
+        url = "postgresql+psycopg://" + url[len("postgres://") :]
     elif url.startswith("postgresql://"):
-        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+        url = "postgresql+psycopg://" + url[len("postgresql://") :]
     return sessionmaker(
         create_engine(url, pool_pre_ping=True, pool_size=2, max_overflow=0),
         autoflush=False,
@@ -85,11 +85,13 @@ def submit(
     token = _requester_hash(client_ip)
     window = _seconds("ANALYSES_RATE_LIMIT_SECONDS", 3600, 60)
     capacity = _seconds("ANALYSES_QUEUE_MAX", 10, 1)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with request_session_factory().begin() as db:
         # One transaction-scoped PostgreSQL lock serializes all admissions.
         # Guarantees rate limits, capacity and duplicate checks across API workers.
-        db.execute(text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": ADMISSION_LOCK})
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": ADMISSION_LOCK}
+        )
 
         city = db.scalar(select(City).where(City.ibge_code == ibge_code))
         if city is not None:
@@ -140,9 +142,9 @@ def submit(
             )
 
         count = db.scalar(
-            select(func.count()).select_from(AnalysisRequest).where(
-                AnalysisRequest.status.in_(("queued", "processing"))
-            )
+            select(func.count())
+            .select_from(AnalysisRequest)
+            .where(AnalysisRequest.status.in_(("queued", "processing")))
         )
         if count is not None and count >= capacity:
             raise HTTPException(

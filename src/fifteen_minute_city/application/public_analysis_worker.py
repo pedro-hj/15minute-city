@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -35,7 +35,9 @@ def _boundary_path(ibge_code: str, cache_dir: Path) -> Path:
         f"{ibge_code}?formato=application/vnd.geo%2Bjson&qualidade=maxima"
     )
     try:
-        with urlopen(Request(url, headers={"Accept": "application/vnd.geo+json"}), timeout=30) as response:
+        with urlopen(
+            Request(url, headers={"Accept": "application/vnd.geo+json"}), timeout=30
+        ) as response:
             content = response.read(20_000_001)
     except (HTTPError, URLError, TimeoutError, OSError) as exc:
         raise RuntimeError("Failed to fetch IBGE municipal boundary") from exc
@@ -77,7 +79,7 @@ def _claim() -> dict | None:
         if job is None:
             return None
         job.status = "processing"
-        job.started_at = datetime.now(timezone.utc)
+        job.started_at = datetime.now(UTC)
         db.flush()
         return {
             "id": job.id,
@@ -94,7 +96,7 @@ def _finish(job_id: str, *, city_id: int | None, error: str | None) -> None:
             return
         job.status = "error" if error else "completed"
         job.result_city_id = city_id
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.error_message = error[:512] if error else None
 
 
@@ -150,7 +152,9 @@ def main() -> None:
         for job in interrupted:
             job.status = "queued"
             job.started_at = None
-    logger.info("Analysis worker started; recovered %d interrupted jobs", len(interrupted))
+    logger.info(
+        "Analysis worker started; recovered %d interrupted jobs", len(interrupted)
+    )
 
     while True:
         job = _claim()
@@ -162,7 +166,11 @@ def main() -> None:
             city_id = _process(job, input_dir, cache_dir)
         except Exception:
             logger.exception("Public analysis %s failed", job["id"])
-            _finish(job["id"], city_id=None, error="Analysis failed; contact the administrator")
+            _finish(
+                job["id"],
+                city_id=None,
+                error="Analysis failed; contact the administrator",
+            )
         else:
             _finish(job["id"], city_id=city_id, error=None)
 

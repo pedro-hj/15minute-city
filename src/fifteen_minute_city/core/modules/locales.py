@@ -18,12 +18,14 @@ from fifteen_minute_city.core.modules.exceptions import ServiceNotSupportedError
 from fifteen_minute_city.db.pipelines.algorithm_pipeline import AlgorithmPipeline
 from fifteen_minute_city.domain.models import OriginSet
 from fifteen_minute_city.infrastructure.origins import load_population_grid
-from fifteen_minute_city.infrastructure.population_catalog import select_population_grids
 from fifteen_minute_city.infrastructure.osm.graph import (
     OSMGraphArtifact,
     load_or_build_osm_graph,
 )
 from fifteen_minute_city.infrastructure.osm.services import load_services_from_pbf
+from fifteen_minute_city.infrastructure.population_catalog import (
+    select_population_grids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +215,9 @@ class Region:
         logger.info("Clipping the population grid to the municipality boundary")
         if path is None:
             if self.settings is None:
-                raise ValueError("analysis settings required for automatic grid selection")
+                raise ValueError(
+                    "analysis settings required for automatic grid selection"
+                )
             selected = select_population_grids(
                 self._boundary,
                 input_dir=self.settings.pbf_path.parent,
