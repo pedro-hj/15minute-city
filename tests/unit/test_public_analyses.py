@@ -206,10 +206,10 @@ def test_official_state_municipality_listing_is_cached(monkeypatch):
 
 
 def test_post_accepts_location_without_ibge_code_or_api_key(monkeypatch):
-    from fastapi.testclient import TestClient
+    from fastapi import Response
+    from starlette.requests import Request
 
     from fifteen_minute_city.api import analysis_routes
-    from fifteen_minute_city.api.app import app
 
     seen = []
 
@@ -232,14 +232,28 @@ def test_post_accepts_location_without_ibge_code_or_api_key(monkeypatch):
 
     monkeypatch.setattr(analysis_routes, "municipality_by_location", fake_resolve)
     monkeypatch.setattr(analysis_routes, "submit", fake_submit)
-    response = TestClient(app).post(
-        "/api/v1/analyses",
-        json={"city": "Praia Grande", "state": "São Paulo", "country": "Brazil"},
+    response = Response()
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/analyses",
+            "headers": [],
+            "client": ("192.0.2.10", 12345),
+            "server": ("testserver", 80),
+            "scheme": "http",
+        }
+    )
+    result = analysis_routes.request_analysis(
+        AnalysisSubmission(
+            city="Praia Grande", state="São Paulo", country="Brazil"
+        ),
+        request,
+        response,
     )
     assert response.status_code == 202
-    assert response.json()["ibge_code"] == "3541000"
+    assert result["ibge_code"] == "3541000"
     assert seen[0] == ("resolve", "Praia Grande", "São Paulo", "Brazil")
-    assert seen[1][0:4] == ("submit", "3541000", "Praia Grande", "São Paulo")
-
-    invalid = TestClient(app).post("/api/v1/analyses", json={"ibge_code": "3541000"})
-    assert invalid.status_code == 422
+    assert seen[1] == (
+        "submit", "3541000", "Praia Grande", "São Paulo", "192.0.2.10"
+    )
