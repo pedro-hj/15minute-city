@@ -19,7 +19,7 @@ def test_api_manual_documents_every_get_endpoint() -> None:
     actual = {
         route.path
         for route in app.routes
-        if "GET" in (route.methods or set())
+        if "GET" in (getattr(route, "methods", None) or set())
         and (route.path == "/health" or route.path.startswith("/api/v1/"))
     }
     assert actual <= documented, (
