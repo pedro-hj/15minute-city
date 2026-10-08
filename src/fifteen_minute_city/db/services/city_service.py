@@ -16,9 +16,7 @@ def get_city_by_id(db: Session, city_id: int) -> City | None:
 
 def get_city_by_name_and_country(db: Session, name: str, country: str) -> City | None:
     """Retrieve a City by its exact name and country."""
-    return db.scalar(
-        select(City).where(City.name == name, City.country == country)
-    )
+    return db.scalar(select(City).where(City.name == name, City.country == country))
 
 
 def list_cities(db: Session) -> list[City]:
@@ -67,7 +65,9 @@ def get_or_create_city(
     return city
 
 
-def get_city_boundary_gdf(db: Session, name: str, country: str) -> gpd.GeoDataFrame | None:
+def get_city_boundary_gdf(
+    db: Session, name: str, country: str
+) -> gpd.GeoDataFrame | None:
     """
     Retrieve the geographic boundary of a city as a GeoDataFrame if present in database.
 
@@ -106,4 +106,6 @@ def save_city_boundary_from_gdf(
     features = geojson_dict.get("features", [])
     geom_data = features[0].get("geometry") if features else None
 
-    return get_or_create_city(db, name=name, country=country, geom_boundary_geojson=geom_data)
+    return get_or_create_city(
+        db, name=name, country=country, geom_boundary_geojson=geom_data
+    )

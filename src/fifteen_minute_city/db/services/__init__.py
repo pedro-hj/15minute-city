@@ -19,6 +19,7 @@ from fifteen_minute_city.db.services.execution_service import (
     create_execution,
     get_execution_by_id,
     list_executions_for_city,
+    update_execution_metadata,
     update_execution_status,
 )
 from fifteen_minute_city.db.services.metrics_service import (
@@ -27,8 +28,7 @@ from fifteen_minute_city.db.services.metrics_service import (
     bulk_save_services,
     get_city_indices_for_execution,
     get_services_by_execution,
-    save_city_indices,
-    save_city_indices_from_metrics,
+    save_accessibility_report,
     save_graph_nodes_from_nx,
     save_services_from_organizer_dict,
 )
@@ -49,11 +49,11 @@ __all__ = [
     "list_categories",
     "list_cities",
     "list_executions_for_city",
+    "save_accessibility_report",
     "save_city_boundary_from_gdf",
-    "save_city_indices",
-    "save_city_indices_from_metrics",
     "save_graph_nodes_from_nx",
     "save_services_from_organizer_dict",
     "seed_default_categories",
+    "update_execution_metadata",
     "update_execution_status",
 ]

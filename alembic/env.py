@@ -27,9 +27,7 @@ target_metadata = Base.metadata
 
 def include_object(object, name, type_, reflected, compare_to):
     """Filter out PostGIS system tables like spatial_ref_sys from autogenerate."""
-    if type_ == "table" and name in ["spatial_ref_sys", "layer", "topology"]:
-        return False
-    return True
+    return not (type_ == "table" and name in ["spatial_ref_sys", "layer", "topology"])
 
 
 def run_migrations_offline() -> None:

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import shapely.geometry
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import to_shape
-from sqlalchemy import Integer, String
+from sqlalchemy import Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fifteen_minute_city.db.base import Base
@@ -17,25 +17,35 @@ if TYPE_CHECKING:
 class City(Base):
     """
     Represents a city or delimited urban region analyzed by the system.
-    
+
     Serves as an entry point for urban mobility queries and holds historical algorithm executions.
     """
 
     __tablename__ = "city"
+    __table_args__ = (UniqueConstraint("name", "country", name="uq_city_name_country"),)
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True, comment="Unique primary key identifier for the city"
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+        comment="Unique primary key identifier for the city",
     )
     name: Mapped[str] = mapped_column(
-        String(255), nullable=False, index=True, comment="City name (e.g., 'Paris', 'Praia Grande')"
+        String(255),
+        nullable=False,
+        index=True,
+        comment="City name (e.g., 'Paris', 'Praia Grande')",
     )
     country: Mapped[str] = mapped_column(
-        String(255), nullable=False, index=True, comment="Country name to which the city belongs"
+        String(255),
+        nullable=False,
+        index=True,
+        comment="Country name to which the city belongs",
     )
     geom_boundary = mapped_column(
-        Geometry("POLYGON", srid=4326),
+        Geometry("GEOMETRY", srid=4326),
         nullable=True,
-        comment="Geographic boundary polygon of the city extracted from OpenStreetMap (EPSG:4326)",
+        comment="Polygon or multipolygon city boundary from OpenStreetMap (EPSG:4326)",
     )
 
     # Relationships

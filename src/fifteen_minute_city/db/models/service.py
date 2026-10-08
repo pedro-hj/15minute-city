@@ -20,14 +20,17 @@ if TYPE_CHECKING:
 class Service(Base):
     """
     Represents a physical establishment mapped from OpenStreetMap (e.g., a school, hospital).
-    
+
     Provides metric auditability by displaying real urban services on the map.
     """
 
     __tablename__ = "service"
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True, comment="Unique primary key identifier for the service"
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+        comment="Unique primary key identifier for the service",
     )
     execution_id: Mapped[int] = mapped_column(
         Integer,
@@ -51,7 +54,9 @@ class Service(Base):
         comment="Foreign key to the nearest network node used for Dijkstra pathfinding",
     )
     name: Mapped[str | None] = mapped_column(
-        String(255), nullable=True, comment="Name of the establishment from OpenStreetMap"
+        String(255),
+        nullable=True,
+        comment="Name of the establishment from OpenStreetMap",
     )
     geom = mapped_column(
         Geometry("POINT", srid=4326),
@@ -61,7 +66,9 @@ class Service(Base):
 
     # Relationships
     execution: Mapped[Execution] = relationship("Execution", back_populates="services")
-    category: Mapped[ServiceCategory] = relationship("ServiceCategory", back_populates="services")
+    category: Mapped[ServiceCategory] = relationship(
+        "ServiceCategory", back_populates="services"
+    )
     representative_node: Mapped[Node] = relationship(
         "Node", back_populates="representative_services"
     )

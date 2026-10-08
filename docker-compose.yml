@@ -16,12 +16,11 @@ services:
       - ./scripts:/app/scripts
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini
-      # Mount map inputs and generated output folders directly from host
-      - ./src/fifteen_minute_city/core/pbfs:/app/src/fifteen_minute_city/core/pbfs
-      - ./src/fifteen_minute_city/core/outputs:/app/src/fifteen_minute_city/core/outputs
+      # Mount inputs, versioned graph cache, and generated reports.
+      - ./data:/app/data
       # Isolate container virtual environment from host .venv
       - /app/.venv
-    command: ["python", "-m", "fifteen_minute_city.main"]
+    command: ["--help"]
 
   # Optional local PostGIS database for offline development and local testing
   db-local:

@@ -1,14 +1,25 @@
+from collections.abc import Iterator
 from typing import Any
 
 import networkx as nx
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
-from fifteen_minute_city.db.models.metrics import CityIndex, NodeReachability
+from fifteen_minute_city.db.models.metrics import (
+    AccessibilitySummary,
+    CityIndex,
+    NodeReachability,
+)
 from fifteen_minute_city.db.models.node import Node
 from fifteen_minute_city.db.models.service import Service
+from fifteen_minute_city.domain.models import AccessibilityReport
+
+
+def _chunks[T](items: list[T], size: int = 5_000) -> Iterator[list[T]]:
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
 
 
 def bulk_save_nodes(
@@ -24,23 +35,27 @@ def bulk_save_nodes(
     :param nodes_data: List of dicts containing keys: 'osm_id', 'lat', 'lon', optional 'overall_index', 'overall_mean_time'.
     :return: Dictionary mapping osm_id -> database node primary key ID.
     """
-    node_objects = []
+    records = []
     for data in nodes_data:
         geom = from_shape(Point(data["lon"], data["lat"]), srid=4326)
-        node = Node(
-            execution_id=execution_id,
-            osm_id=data["osm_id"],
-            geom=geom,
-            overall_index=data.get("overall_index"),
-            overall_mean_time=data.get("overall_mean_time"),
+        records.append(
+            {
+                "execution_id": execution_id,
+                "osm_id": data["osm_id"],
+                "geom": geom,
+                "overall_index": data.get("overall_index"),
+                "overall_mean_time": data.get("overall_mean_time"),
+            }
         )
-        node_objects.append(node)
 
-    db.add_all(node_objects)
-    db.flush()
-
-    # Build mapping from osm_id -> db primary key ID
-    return {n.osm_id: n.id for n in node_objects}
+    node_map = {}
+    for batch in _chunks(records):
+        rows = db.execute(
+            insert(Node).returning(Node.id, Node.osm_id),
+            batch,
+        ).all()
+        node_map.update({int(row.osm_id): int(row.id) for row in rows})
+    return node_map
 
 
 def save_graph_nodes_from_nx(
@@ -85,21 +100,25 @@ def bulk_save_services(
     :param services_data: List of dicts containing: 'category_id', 'name', 'lat', 'lon', optional 'representative_node_id'.
     :return: List of created Service model instances.
     """
-    service_objects = []
+    records = []
     for data in services_data:
         geom = from_shape(Point(data["lon"], data["lat"]), srid=4326)
-        service = Service(
-            execution_id=execution_id,
-            category_id=data["category_id"],
-            representative_node_id=data.get("representative_node_id"),
-            name=data.get("name"),
-            geom=geom,
+        records.append(
+            {
+                "execution_id": execution_id,
+                "category_id": data["category_id"],
+                "representative_node_id": data.get("representative_node_id"),
+                "name": data.get("name"),
+                "geom": geom,
+            }
         )
-        service_objects.append(service)
 
-    db.add_all(service_objects)
-    db.flush()
-    return service_objects
+    saved_services = []
+    for batch in _chunks(records):
+        saved_services.extend(
+            db.scalars(insert(Service).returning(Service), batch).all()
+        )
+    return saved_services
 
 
 def save_services_from_organizer_dict(
@@ -121,7 +140,7 @@ def save_services_from_organizer_dict(
     :param db: SQLAlchemy Session.
     :param execution_id: Execution run ID.
     :param organized_data: Dictionary structured from organizes_data().
-    :param category_id_map: Mapping from category_code (e.g. 'bank') -> category_id.
+    :param category_id_map: Mapping from category_code (e.g. 'health') -> category_id.
     :param osm_to_db_node_map: Optional mapping from osm_id -> db node.id.
     :return: List of created Service model instances.
     """
@@ -140,7 +159,11 @@ def save_services_from_organizer_dict(
             if osm_node_id is not None and osm_to_db_node_map:
                 rep_node_id = osm_to_db_node_map.get(int(osm_node_id))
 
-            if point_geom is not None and hasattr(point_geom, "x") and hasattr(point_geom, "y"):
+            if (
+                point_geom is not None
+                and hasattr(point_geom, "x")
+                and hasattr(point_geom, "y")
+            ):
                 services_data.append(
                     {
                         "category_id": cat_id,
@@ -159,9 +182,7 @@ def save_services_from_organizer_dict(
 def get_services_by_execution(db: Session, execution_id: int) -> list[Service]:
     """Retrieve all physical services associated with a specific execution."""
     return list(
-        db.scalars(
-            select(Service).where(Service.execution_id == execution_id)
-        ).all()
+        db.scalars(select(Service).where(Service.execution_id == execution_id)).all()
     )
 
 
@@ -175,92 +196,19 @@ def bulk_save_node_reachabilities(
     :param db: SQLAlchemy Session.
     :param reachabilities_data: List of dicts containing: 'node_id', 'category_id', 'travel_time_minutes', 'within_threshold', optional 'closest_service_id'.
     """
-    reachability_objects = [
-        NodeReachability(
-            node_id=data["node_id"],
-            category_id=data["category_id"],
-            closest_service_id=data.get("closest_service_id"),
-            travel_time_minutes=data["travel_time_minutes"],
-            within_threshold=data["within_threshold"],
-        )
+    records = [
+        {
+            "node_id": data["node_id"],
+            "category_id": data["category_id"],
+            "closest_service_id": data.get("closest_service_id"),
+            "travel_time_minutes": data["travel_time_minutes"],
+            "reachable": data.get("reachable", True),
+            "within_threshold": data["within_threshold"],
+        }
         for data in reachabilities_data
     ]
-    db.add_all(reachability_objects)
-    db.flush()
-
-
-def save_city_indices(
-    db: Session,
-    execution_id: int,
-    city_indices_data: list[dict[str, Any]],
-) -> list[CityIndex]:
-    """
-    Save aggregated city accessibility indices for an execution run.
-
-    :param db: SQLAlchemy Session.
-    :param execution_id: Execution run ID.
-    :param city_indices_data: List of dicts containing: 'category_id', 'mean_travel_time_minutes', 'percentage_within_threshold', 'overall_index'.
-    :return: List of created CityIndex instances.
-    """
-    index_objects = [
-        CityIndex(
-            execution_id=execution_id,
-            category_id=data["category_id"],
-            mean_travel_time_minutes=data["mean_travel_time_minutes"],
-            percentage_within_threshold=data["percentage_within_threshold"],
-            overall_index=data["overall_index"],
-        )
-        for data in city_indices_data
-    ]
-    db.add_all(index_objects)
-    db.flush()
-    return index_objects
-
-
-def save_city_indices_from_metrics(
-    db: Session,
-    execution_id: int,
-    metrics_list: list[dict[str, Any]],
-    category_id_map: dict[str, int],
-) -> list[CityIndex]:
-    """
-    Save city index records from the output of multi_source_algorithm():
-    [
-        {'service': 'bank', 'mean': 12.5, 'median': 10.2, 'std': 3.1, 'max': 25.0, 'qtd_nodes': 1000},
-        ...
-    ]
-
-    :param db: SQLAlchemy Session.
-    :param execution_id: Execution run ID.
-    :param metrics_list: List of metric dictionaries.
-    :param category_id_map: Mapping from service tag/code -> category_id.
-    :return: List of created CityIndex instances.
-    """
-    city_indices_data = []
-    for item in metrics_list:
-        service_code = item.get("service")
-        cat_id = category_id_map.get(service_code)
-        if not cat_id:
-            continue
-
-        mean_time = float(item.get("mean", 0.0))
-        median_time = float(item.get("median", mean_time))
-        # Overall index reference based on median/threshold
-        overall_index = float(median_time)
-        percentage_within_threshold = float(item.get("percentage_within_threshold", 0.0))
-
-        city_indices_data.append(
-            {
-                "category_id": cat_id,
-                "mean_travel_time_minutes": mean_time,
-                "percentage_within_threshold": percentage_within_threshold,
-                "overall_index": overall_index,
-            }
-        )
-
-    if city_indices_data:
-        return save_city_indices(db, execution_id, city_indices_data)
-    return []
+    for batch in _chunks(records):
+        db.execute(insert(NodeReachability), batch)
 
 
 def get_city_indices_for_execution(db: Session, execution_id: int) -> list[CityIndex]:
@@ -270,3 +218,51 @@ def get_city_indices_for_execution(db: Session, execution_id: int) -> list[CityI
             select(CityIndex).where(CityIndex.execution_id == execution_id)
         ).all()
     )
+
+
+def save_accessibility_report(
+    db: Session,
+    execution_id: int,
+    report: AccessibilityReport,
+    category_id_map: dict[str, int],
+) -> tuple[list[CityIndex], AccessibilitySummary]:
+    """Persist category and overall indicators from the domain report."""
+    indices = []
+    for category_code, metrics in report.categories.items():
+        category_id = category_id_map.get(category_code)
+        if category_id is None:
+            raise ValueError(
+                f"Service category '{category_code}' is not registered in the database"
+            )
+
+        index = CityIndex(
+            execution_id=execution_id,
+            category_id=category_id,
+            origin_strategy=report.origin_strategy,
+            weight_unit=report.weight_unit,
+            threshold_minutes=report.threshold_minutes,
+            total_weight=metrics.total_weight,
+            reachable_weight=metrics.reachable_weight,
+            within_threshold_weight=metrics.within_threshold_weight,
+            unreachable_weight=metrics.unreachable_weight,
+            mean_travel_time_minutes=metrics.mean_travel_time_minutes,
+            median_travel_time_minutes=metrics.median_travel_time_minutes,
+            percentage_within_threshold=metrics.coverage_percentage,
+            unreachable_percentage=metrics.unreachable_percentage,
+            overall_index=metrics.coverage_percentage,
+        )
+        indices.append(db.merge(index))
+
+    summary = AccessibilitySummary(
+        execution_id=execution_id,
+        origin_strategy=report.origin_strategy,
+        weight_unit=report.weight_unit,
+        threshold_minutes=report.threshold_minutes,
+        total_weight=report.total_weight,
+        overall_coverage_percentage=report.overall_coverage_percentage,
+        overall_unreachable_percentage=report.overall_unreachable_percentage,
+        overall_score=report.overall_coverage_percentage,
+    )
+    summary = db.merge(summary)
+    db.flush()
+    return indices, summary

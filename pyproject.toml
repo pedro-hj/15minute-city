@@ -10,16 +10,22 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.18.5",
     "geoalchemy2>=0.20.0",
+    "geopandas>=1.1.4",
     "networkx>=3.4.2",
+    "numpy>=2.0.0",
     "osmnx>=2.0.7",
+    "pandas>=2.2.0",
+    "psutil>=7.0.0",
     "psycopg[binary]>=3.3.4",
     "python-dotenv>=1.2.2",
     "scikit-learn>=1.7.2",
+    "scipy>=1.14.0",
+    "shapely>=2.0.0",
     "sqlalchemy>=2.0.51",
 ]
 
 [project.scripts]
-fifteen-minute-city = "fifteen_minute_city:main"
+fifteen-minute-city = "fifteen_minute_city.main:main"
 
 [build-system]
 requires = ["uv_build>=0.11.24,<0.12.0"]
@@ -33,4 +39,11 @@ dev = [
     "pytest>=9.1.1",
     "pytest-benchmark>=5.2.3",
     "ruff>=0.15.20",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "benchmark: performance regression benchmarks",
+    "integration: local integration tests that invoke external executables",
 ]
