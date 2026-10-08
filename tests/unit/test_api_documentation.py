@@ -40,4 +40,4 @@ def test_api_manual_contains_only_chapters_1_to_4() -> None:
     chapters = re.findall(r"^## ([0-9]+)\.", text, flags=re.MULTILINE)
     subsections = re.findall(r"^### ([0-9]+\.[0-9]+)\.", text, flags=re.MULTILINE)
     assert chapters == ["1", "2", "3", "4"]
-    assert subsections == ["1.1", "2.1", "2.2", "3.1", "3.2", "3.3", "3.4"]
+    assert subsections == ["1.1", "2.1", "2.2", "3.1", "3.2", "3.3", "3.4", "3.5"]

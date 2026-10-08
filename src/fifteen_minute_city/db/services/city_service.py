@@ -14,6 +14,10 @@ def get_city_by_id(db: Session, city_id: int) -> City | None:
     return db.scalar(select(City).where(City.id == city_id))
 
 
+def get_city_by_ibge_code(db: Session, code: str) -> City | None:
+    return db.scalar(select(City).where(City.ibge_code == code))
+
+
 def get_city_by_name_and_country(db: Session, name: str, country: str) -> City | None:
     """Retrieve a City by its exact name and country."""
     return db.scalar(select(City).where(City.name == name, City.country == country))
@@ -29,6 +33,8 @@ def get_or_create_city(
     name: str,
     country: str,
     geom_boundary_geojson: dict | None = None,
+    ibge_code: str | None = None,
+    state: str | None = None,
 ) -> City:
     """
     Retrieve an existing City or create a new one if it does not exist.
@@ -39,13 +45,21 @@ def get_or_create_city(
     :param geom_boundary_geojson: Optional GeoJSON dictionary representing the polygon boundary.
     :return: City instance.
     """
-    city = get_city_by_name_and_country(db, name, country)
+    city = (
+        get_city_by_ibge_code(db, ibge_code)
+        if ibge_code
+        else get_city_by_name_and_country(db, name, country)
+    )
     if city:
+        if state and city.state is None:
+            city.state = state
         if geom_boundary_geojson and city.geom_boundary is None:
             shapely_geom = shape(geom_boundary_geojson)
             city.geom_boundary = from_shape(shapely_geom, srid=4326)
             db.commit()
             db.refresh(city)
+        db.commit()
+        db.refresh(city)
         return city
 
     # Convert GeoJSON boundary dictionary to WKB/Geometry if provided
@@ -57,6 +71,8 @@ def get_or_create_city(
     city = City(
         name=name,
         country=country,
+        ibge_code=ibge_code,
+        state=state,
         geom_boundary=geom,
     )
     db.add(city)
@@ -66,7 +82,7 @@ def get_or_create_city(
 
 
 def get_city_boundary_gdf(
-    db: Session, name: str, country: str
+    db: Session, name: str, country: str, ibge_code: str | None = None
 ) -> gpd.GeoDataFrame | None:
     """
     Retrieve the geographic boundary of a city as a GeoDataFrame if present in database.
@@ -76,7 +92,11 @@ def get_city_boundary_gdf(
     :param country: Country name.
     :return: GeoPandas GeoDataFrame with 'geometry' column, or None.
     """
-    city = get_city_by_name_and_country(db, name, country)
+    city = (
+        get_city_by_ibge_code(db, ibge_code)
+        if ibge_code
+        else get_city_by_name_and_country(db, name, country)
+    )
     if city and city.geom_boundary is not None:
         shapely_obj = to_shape(city.geom_boundary)
         return gpd.GeoDataFrame(
@@ -87,7 +107,12 @@ def get_city_boundary_gdf(
 
 
 def save_city_boundary_from_gdf(
-    db: Session, name: str, country: str, gdf: gpd.GeoDataFrame
+    db: Session,
+    name: str,
+    country: str,
+    gdf: gpd.GeoDataFrame,
+    ibge_code: str | None = None,
+    state: str | None = None,
 ) -> City:
     """
     Save or update the city boundary polygon from a GeoPandas GeoDataFrame.
@@ -99,7 +124,9 @@ def save_city_boundary_from_gdf(
     :return: Updated or created City instance.
     """
     if gdf.empty or "geometry" not in gdf.columns:
-        return get_or_create_city(db, name=name, country=country)
+        return get_or_create_city(
+            db, name=name, country=country, ibge_code=ibge_code, state=state
+        )
 
     geom_obj = gdf.geometry.iloc[0]
     geojson_dict = json.loads(gpd.GeoSeries([geom_obj]).to_json())
@@ -107,5 +134,10 @@ def save_city_boundary_from_gdf(
     geom_data = features[0].get("geometry") if features else None
 
     return get_or_create_city(
-        db, name=name, country=country, geom_boundary_geojson=geom_data
+        db,
+        name=name,
+        country=country,
+        geom_boundary_geojson=geom_data,
+        ibge_code=ibge_code,
+        state=state,
     )

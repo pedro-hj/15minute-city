@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import shapely.geometry
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import to_shape
-from sqlalchemy import Integer, String, UniqueConstraint
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fifteen_minute_city.db.base import Base
@@ -22,7 +22,6 @@ class City(Base):
     """
 
     __tablename__ = "city"
-    __table_args__ = (UniqueConstraint("name", "country", name="uq_city_name_country"),)
 
     id: Mapped[int] = mapped_column(
         Integer,
@@ -30,6 +29,8 @@ class City(Base):
         autoincrement=True,
         comment="Unique primary key identifier for the city",
     )
+    ibge_code: Mapped[str | None] = mapped_column(String(7), nullable=True, unique=True)
+    state: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -66,6 +67,8 @@ class City(Base):
         return {
             "id": self.id,
             "name": self.name,
+            "ibge_code": self.ibge_code,
+            "state": self.state,
             "country": self.country,
             "geom_boundary": self.geojson_boundary,
         }

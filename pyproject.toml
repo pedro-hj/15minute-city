@@ -29,6 +29,7 @@ dependencies = [
 [project.scripts]
 fifteen-minute-city = "fifteen_minute_city.main:main"
 fifteen-minute-city-api = "fifteen_minute_city.api.app:run"
+fifteen-minute-city-worker = "fifteen_minute_city.application.public_analysis_worker:main"
 
 [build-system]
 requires = ["uv_build>=0.11.24,<0.12.0"]

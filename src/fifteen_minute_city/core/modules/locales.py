@@ -23,6 +23,9 @@ from fifteen_minute_city.infrastructure.osm.graph import (
     load_or_build_osm_graph,
 )
 from fifteen_minute_city.infrastructure.osm.services import load_services_from_pbf
+from fifteen_minute_city.infrastructure.population_catalog import (
+    select_population_grids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,7 @@ class Region:
         threshold_minutes: float = 15.0,
         cache_dir: str | Path = "data/cache",
         boundary_path: str | Path | None = None,
+        ibge_code: str | None = None,
     ):
         if "city" not in locale:
             raise ValueError("locale must contain a city")
@@ -57,6 +61,7 @@ class Region:
             self.pbf_path = self.settings.pbf_path
 
         self.locale = locale
+        self.ibge_code = ibge_code
         self.network_type = network_type
         self.speed = speed
         self.__graph = None
@@ -88,6 +93,7 @@ class Region:
             boundary = self.pipeline.get_city_boundary(
                 self.locale["city"],
                 self.locale.get("country", "Brazil"),
+                ibge_code=self.ibge_code,
             )
             if boundary is not None:
                 self._boundary_source = "database"
@@ -101,6 +107,8 @@ class Region:
                 self.locale["city"],
                 self.locale.get("country", "Brazil"),
                 boundary,
+                ibge_code=self.ibge_code,
+                state=self.locale.get("state"),
             )
             context = self.pipeline.prepare_execution(
                 city_name=self.locale["city"],
@@ -109,6 +117,8 @@ class Region:
                 threshold_minutes=self.threshold_minutes,
                 network_type=self.network_type,
                 pbf_source=str(self.settings.pbf_path),
+                ibge_code=self.ibge_code,
+                state=self.locale.get("state"),
             )
             self.execution_id = context.execution_id
 
@@ -193,7 +203,7 @@ class Region:
 
     def load_population_grid(
         self,
-        path: str,
+        path: str | list[str] | None,
         *,
         population_column: str = "population",
         id_column: str | None = None,
@@ -203,6 +213,17 @@ class Region:
         if self._boundary is None:
             raise RuntimeError("municipality boundary is unavailable")
         logger.info("Clipping the population grid to the municipality boundary")
+        if path is None:
+            if self.settings is None:
+                raise ValueError(
+                    "analysis settings required for automatic grid selection"
+                )
+            selected = select_population_grids(
+                self._boundary,
+                input_dir=self.settings.pbf_path.parent,
+                cache_dir=self.settings.cache_dir,
+            )
+            path = [str(item) for item in selected]
         origins = load_population_grid(
             path,
             self.__graph,

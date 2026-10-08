@@ -162,3 +162,21 @@ Para gerar a versão PDF localmente:
 uv run --no-project --with reportlab==4.4.9 \
   python scripts/generate_api_manual.py
 ```
+
+## Análises públicas sob demanda (proposta em revisão)
+
+Uma requisição `POST /api/v1/analyses` recebe
+`{"city":"Praia Grande","state":"São Paulo","country":"Brazil"}`
+e resolve o código IBGE internamente antes de criar uma tarefa para o worker,
+sem bloquear o processo HTTP. A rota
+`GET /api/v1/analyses/{request_id}` informa se a execução está em fila,
+em processamento, concluída ou com erro. Ambas são públicas, sem API key.
+Os endpoints originais de consulta de indicadores continuam protegidos.
+
+**Limite padrão:** uma nova solicitação por IP a cada **60 minutos**, com
+até **10 tarefas ativas**, deduplicação de municípios e `Retry-After` para
+respostas `429`. O IP não é salvo em claro.
+
+Para preparar o banco e as permissões, configurar o `systemd` e validar o
+worker antes de habilitar o POST publicamente, consulte
+[`docs/ANALYSES.md`](docs/ANALYSES.md).
