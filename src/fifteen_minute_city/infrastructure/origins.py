@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import geopandas as gpd
@@ -74,7 +75,7 @@ def origins_from_graph_nodes(graph: nx.Graph) -> OriginSet:
 
 
 def load_population_grid(
-    path: str | Path,
+    path: str | Path | Sequence[str | Path],
     graph: nx.MultiDiGraph,
     *,
     population_column: str = "population",
@@ -82,11 +83,48 @@ def load_population_grid(
     boundary: gpd.GeoDataFrame | None = None,
 ) -> OriginSet:
     """Load, municipally filter, and snap a population grid to the graph."""
-    grid_path = Path(path).expanduser().resolve()
-    if not grid_path.is_file():
-        raise FileNotFoundError(f"population grid not found: {grid_path}")
+    paths = (
+        [path] if isinstance(path, (str, Path)) else list(path)
+    )
+    if not paths:
+        raise ValueError("at least one population grid is required")
+    grid_paths = [Path(item).expanduser().resolve() for item in paths]
+    grids = []
+    metadata_by_tile = []
+    for grid_path in grid_paths:
+        if not grid_path.is_file():
+            raise FileNotFoundError(f"population grid not found: {grid_path}")
+        try:
+            part, tile_metadata = _read_population_grid(grid_path, boundary)
+        except ValueError as exc:
+            if len(grid_paths) > 1 and str(exc) in (
+                "population grid does not intersect the municipality boundary",
+                "population grid has no cell representative points inside the municipality",
+            ):
+                continue
+            raise
+        grids.append(part.to_crs("EPSG:4326"))
+        metadata_by_tile.append({"file": grid_path.name, **tile_metadata})
+    if not grids:
+        raise ValueError("no populated grid tiles intersect the municipality")
 
-    grid, spatial_metadata = _read_population_grid(grid_path, boundary)
+    grid = gpd.GeoDataFrame(
+        pd.concat(grids, ignore_index=True),
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+    if id_column is not None and len(grid_paths) > 1:
+        grid = grid.drop_duplicates(subset=[id_column], keep="first").copy()
+    spatial_metadata = (
+        metadata_by_tile[0]
+        if len(grid_paths) == 1
+        else {
+            "spatially_filtered": boundary is not None,
+            "source_tiles": [item["file"] for item in metadata_by_tile],
+            "candidate_tile_count": len(grid_paths),
+            "selected_tile_count": len(metadata_by_tile),
+        }
+    )
     loaded_feature_count = len(grid)
     if grid.empty:
         raise ValueError("population grid must contain at least one feature")
@@ -169,6 +207,6 @@ def load_population_grid(
         strategy="population_grid",
         weight_unit="population",
         origins=tuple(origins),
-        source=str(grid_path),
+        source=";".join(str(item) for item in grid_paths),
         metadata=origin_metadata,
     )

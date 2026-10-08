@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,6 +90,11 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
+@lru_cache(maxsize=4)
+def _cached_pbf_checksum(path: str, size: int, mtime_ns: int) -> str:
+    return sha256_file(Path(path))
+
+
 def _boundary_digest(boundary: gpd.GeoDataFrame) -> str:
     """Calculate a stable identity for a municipality boundary."""
     boundary_wgs84 = boundary.to_crs("EPSG:4326")
@@ -116,7 +122,10 @@ def load_or_build_osm_graph(
     if boundary.crs is None:
         raise ValueError("the region boundary must define a CRS")
 
-    pbf_checksum = sha256_file(source_path)
+    stat = source_path.stat()
+    pbf_checksum = _cached_pbf_checksum(
+        str(source_path), stat.st_size, stat.st_mtime_ns
+    )
     cache_parameters = {
         "builder": GRAPH_BUILDER_VERSION,
         "pbf_checksum": pbf_checksum,

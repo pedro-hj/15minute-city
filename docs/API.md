@@ -9,6 +9,8 @@ Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são 
 | `GET /health` | Verifica se o processo HTTP está respondendo (sem chave). |
 | `GET /api/v1/version` | Informa nome e versão da API. |
 | `GET /api/v1/cities` | Lista municípios cadastrados. |
+| `POST /api/v1/analyses` | Solicita uma análise pública pelo código IBGE (sem chave, sujeita a limite de taxa). |
+| `GET /api/v1/analyses/{request_id}` | Consulta o andamento de uma solicitação (sem chave). |
 | `GET /api/v1/cities/{city_id}` | Obtém um município específico. |
 | `GET /api/v1/categories` | Lista as categorias registradas. |
 | `GET /api/v1/cities/{city_id}/executions` | Lista execuções concluídas do município. |
@@ -137,3 +139,49 @@ A resposta contém dados de identificação do município, estratégia, categori
 | `500` | Falha inesperada, incluindo possíveis problemas de banco. | Consultar logs do serviço e saúde do banco. |
 
 **Atenção:** a rota `/health` confirma que o servidor HTTP responde, mas **não verifica a conectividade com o banco de dados**. Uma consulta às cidades autenticada é um teste mais abrangente.
+
+### 4.1. Solicitação pública de análises
+
+O serviço permite que qualquer usuário **solicite** o cálculo de um município
+brasileiro, sem precisar de `X-API-Key`. As rotas de consulta de indicadores
+existentes continuam protegidas pela chave original. Por segurança, o processamento
+nunca ocorre durante o HTTP: a solicitação entra na fila do worker.
+
+```http
+POST /api/v1/analyses
+Content-Type: application/json
+
+{"ibge_code": "3541000"}
+```
+
+A resposta `202 Accepted` traz `request_id`, `ibge_code`, `city`, `state`,
+`status`, `requested_at`, `city_id` e `results_url` (os dois últimos,
+em geral, `null` até o fim do cálculo). Use:
+
+```http
+GET /api/v1/analyses/{request_id}
+```
+
+Os estados possíveis são `queued`, `processing`, `completed` e `error`.
+Se houver execução concluída para o código IBGE, o POST retorna `200 OK`
+com a URL dos resultados existentes, sem consumir nova cota. Se já houver
+tarefa ativa, retorna `202` com o mesmo `request_id`, também sem consumir cota.
+
+**Limites iniciais:** uma nova solicitação aceita por endereço IP a cada
+**60 minutos** (`ANALYSES_RATE_LIMIT_SECONDS=3600`), e até **10 tarefas
+ativas** (`ANALYSES_QUEUE_MAX=10`). O servidor usa o endereço remoto validado
+pelo proxy; o IP é guardado somente como HMAC-SHA256, sem registrar o endereço
+original na tabela de solicitações. `429 Too Many Requests` inclui
+`Retry-After`. A fila cheia retorna `503` com `Retry-After`.
+Clientes atrás de um mesmo NAT compartilham a cota.
+
+A API requer `ANALYSES_DATABASE_URL` (papel de banco com permissões
+limitadas de fila) e `ANALYSES_IP_HMAC_SECRET` (segredo com pelo menos
+32 caracteres). Sem essas variáveis, solicitações públicas ficam indisponíveis.
+Acesso ao banco de resultados permanece isolado com `DATABASE_URL` de leitura.
+
+**Dados nacionais:** o worker utiliza `data/input/brazil-latest.osm.pbf` e
+arquivos `data/input/grade_id*.zip`, escolhendo arquivos por metadados
+geoespaciais, sem relacionar nomes de ZIPs a UFs. Células sobrepostas com
+mesmo `ID_UNICO` são contadas uma vez. Os limites municipais são
+obtidos da API de malhas do IBGE e ficam em cache local.

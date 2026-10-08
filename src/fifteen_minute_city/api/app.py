@@ -4,13 +4,14 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from fifteen_minute_city.api.analysis_routes import router as analysis_router
 from fifteen_minute_city.api.routes import router
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="15-Minute City API",
-        summary="Read-only access to urban accessibility indicators.",
+        summary="Urban accessibility results and public analysis requests.",
         description=(
             "Consult completed analyses by city, origin strategy, service "
             "category and metric. Authenticate with the X-API-Key header."
@@ -30,7 +31,7 @@ def create_app() -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cors_origins,
-            allow_methods=["GET"],
+            allow_methods=["GET", "POST"],
             allow_headers=["X-API-Key", "Content-Type"],
         )
 
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(router)
+    app.include_router(analysis_router)
     return app
 
 
@@ -50,4 +52,6 @@ def run() -> None:
         "fifteen_minute_city.api.app:app",
         host=os.getenv("API_HOST", "127.0.0.1"),
         port=int(os.getenv("API_PORT", "8000")),
+        proxy_headers=True,
+        forwarded_allow_ips=os.getenv("API_TRUSTED_PROXY_IPS", "127.0.0.1"),
     )

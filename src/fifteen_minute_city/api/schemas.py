@@ -12,6 +12,8 @@ class CityResponse(BaseModel):
     id: int
     name: str
     country: str
+    ibge_code: str | None = None
+    state: str | None = None
 
 
 class CategoryResponse(BaseModel):

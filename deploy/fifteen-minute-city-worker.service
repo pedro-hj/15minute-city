@@ -1,0 +1,31 @@
+[Unit]
+Description=15minute-city public analyses worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tcc
+Group=tcc
+WorkingDirectory=/opt/15minute-city
+EnvironmentFile=/etc/15minute-city/worker.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/flock -n /run/lock/15minute-city-worker.lock /opt/15minute-city/.venv/bin/fifteen-minute-city-worker
+Restart=on-failure
+RestartSec=20
+TimeoutStopSec=30
+UMask=027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/15minute-city/data/cache /opt/15minute-city/data/output /run/lock
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
