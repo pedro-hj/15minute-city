@@ -51,7 +51,3 @@ markers = [
     "integration: local integration tests that invoke external executables",
 ]
 
-[tool.ruff]
-extend-exclude = [
-    "alembic/versions",
-]
