@@ -40,7 +40,7 @@ def _report(
 ) -> dict:
     return {
         "origin_strategy": strategy,
-        "weight_unit": "nodes" if strategy == "graph_nodes" else "population",
+        "weight_unit": "nodes" if strategy == "network_nodes" else "population",
         "threshold_minutes": 15.0,
         "total_weight": 100.0,
         "categories": {
@@ -75,7 +75,7 @@ def test_comparison_matches_detailed_json_semantics() -> None:
         overall_coverage=70.0,
     )
     nodes = _report(
-        "graph_nodes",
+        "network_nodes",
         category_coverage=65.0,
         overall_coverage=55.0,
     )
@@ -117,7 +117,7 @@ def test_builds_detailed_strategy_report_from_aggregated_rows() -> None:
 
 def test_extracts_category_and_overall_metrics() -> None:
     report = _report(
-        "graph_nodes",
+        "network_nodes",
         category_coverage=65.0,
         overall_coverage=55.0,
     )
@@ -128,7 +128,7 @@ def test_extracts_category_and_overall_metrics() -> None:
 
 def test_rejects_unknown_metric_or_category() -> None:
     report = _report(
-        "graph_nodes",
+        "network_nodes",
         category_coverage=65.0,
         overall_coverage=55.0,
     )
@@ -143,7 +143,7 @@ def test_metric_response_includes_execution_context() -> None:
     processed_at = datetime.datetime(2026, 10, 6, tzinfo=datetime.UTC)
     execution = SimpleNamespace(id=7, city_id=3, processed_at=processed_at)
     report = _report(
-        "graph_nodes",
+        "network_nodes",
         category_coverage=65.0,
         overall_coverage=55.0,
     )
