@@ -135,11 +135,12 @@ persistidos, sem executar novas análises geográficas. Para consultar
 uv run fifteen-minute-city-api
 ```
 
-A documentação oficial oferece instruções de instalação, exemplos de
-requisições, todos os endpoints e o significado dos indicadores:
+O manual de referência reúne exclusivamente os capítulos **4 a 7**:
+catálogo de endpoints, estratégias e indicadores, exemplos de respostas
+e códigos de erro. O PDF usa a família tipográfica **Montserrat**.
 
-- **[Manual de uso da API (PDF)](docs/API-manual.pdf)** - versão para consulta e impressão.
-- **[Manual da API (Markdown)](docs/API.md)** - fonte oficial, atualizada junto ao código.
+- **[Manual de referência da API (PDF)](docs/API-manual.pdf)** - versão para consulta e impressão.
+- **[Manual de referência da API (Markdown)](docs/API.md)** - fonte oficial, atualizada junto ao código.
 
 A documentação interativa do FastAPI também está disponível em
 `http://127.0.0.1:8000/docs` na VPS. O acesso externo a esta rota
