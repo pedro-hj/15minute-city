@@ -245,15 +245,11 @@ def test_post_accepts_location_without_ibge_code_or_api_key(monkeypatch):
         }
     )
     result = analysis_routes.request_analysis(
-        AnalysisSubmission(
-            city="Praia Grande", state="São Paulo", country="Brazil"
-        ),
+        AnalysisSubmission(city="Praia Grande", state="São Paulo", country="Brazil"),
         request,
         response,
     )
     assert response.status_code == 202
     assert result["ibge_code"] == "3541000"
     assert seen[0] == ("resolve", "Praia Grande", "São Paulo", "Brazil")
-    assert seen[1] == (
-        "submit", "3541000", "Praia Grande", "São Paulo", "192.0.2.10"
-    )
+    assert seen[1] == ("submit", "3541000", "Praia Grande", "São Paulo", "192.0.2.10")
