@@ -12,6 +12,7 @@ import re
 import textwrap
 from pathlib import Path
 
+from reportlab import rl_config
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -325,7 +326,7 @@ def page(pdf: canvas.Canvas, doc: SimpleDocTemplate) -> None:
     pdf.line(59, 51, width - 59, 51)
     pdf.setFillColor(MUTED)
     pdf.setFont("ManualSans", 7.4)
-    pdf.drawString(59, 38, "EndPoints, indicadores e exemplos · API v1")
+    pdf.drawString(59, 38, "Endpoints, indicadores e exemplos · API v1")
     pdf.drawRightString(width - 59, 38, str(doc.page))
     pdf.restoreState()
 
@@ -335,6 +336,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=TARGET)
     args = parser.parse_args()
     register_fonts()
+    rl_config.canvas_basefontname = "ManualSans"
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     document = SimpleDocTemplate(
