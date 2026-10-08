@@ -11,7 +11,7 @@ from fifteen_minute_city.db.models.execution import Execution
 from fifteen_minute_city.db.models.metrics import AccessibilitySummary, CityIndex
 
 PUBLIC_STRATEGIES = {
-    "nodes": "graph_nodes",
+    "nodes": "network_nodes",
     "population": "population_grid",
 }
 
