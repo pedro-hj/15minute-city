@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from fifteen_minute_city.api import service as service_module
 from fifteen_minute_city.api.service import (
     build_comparison,
     build_metric_response,
@@ -167,3 +168,31 @@ def test_metric_response_includes_execution_context() -> None:
         "unit": "percent",
         "threshold_minutes": 15.0,
     }
+
+
+def test_detailed_result_uses_persisted_strategy_names(monkeypatch) -> None:
+    processed_at = datetime.datetime(2026, 10, 6, tzinfo=datetime.UTC)
+    execution = SimpleNamespace(
+        id=7,
+        city_id=3,
+        processed_at=processed_at,
+        status="completed",
+        speed_kmh=3.0,
+        threshold_minutes=15.0,
+        network_type="walk",
+        execution_time_seconds=1.5,
+    )
+    strategies = []
+
+    def fake_report(_db, _execution_id, strategy):
+        strategies.append(strategy)
+        return None
+
+    monkeypatch.setattr(service_module, "build_strategy_report", fake_report)
+
+    result = service_module.build_detailed_result(object(), execution)
+
+    assert strategies == ["network_nodes", "population_grid"]
+    assert result["node_report"] is None
+    assert result["population_report"] is None
+    assert result["comparison"] is None
