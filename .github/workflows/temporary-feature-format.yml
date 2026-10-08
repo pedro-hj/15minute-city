@@ -1,0 +1,38 @@
+name: Temporary PR formatter
+
+on:
+  push:
+    branches:
+      - feature/public-analyses-rate-limit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.17"
+      - run: |
+          uv python install
+          uv sync --locked --all-groups
+          uv run ruff check . --fix
+          uv run ruff format .
+      - name: Commit formatting
+        run: |
+          git add src tests alembic pyproject.toml
+          if git diff --cached --quiet; then
+            echo "No formatting needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style(analyses): automatic Ruff formatting"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
