@@ -31,11 +31,6 @@ jobs:
         with:
           version: "0.12.17"
 
-      - name: Format documentation automation
-        run: |
-          uv run --no-project --with ruff==0.16.1 ruff format \
-            scripts/generate_api_manual.py tests/unit/test_api_documentation.py
-
       - name: Generate versioned PDF from Markdown
         run: |
           uv run --no-project --with reportlab==4.4.9 \
@@ -43,7 +38,7 @@ jobs:
 
       - name: Commit updated manual if needed
         run: |
-          git add docs/API-manual.pdf scripts/generate_api_manual.py tests/unit/test_api_documentation.py
+          git add docs/API-manual.pdf
           if git diff --cached --quiet; then
             echo "PDF already current."
             exit 0
