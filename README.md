@@ -135,7 +135,7 @@ persistidos, sem executar novas análises geográficas. Para consultar
 uv run fifteen-minute-city-api
 ```
 
-O manual de referência reúne exclusivamente os capítulos **4 a 7**:
+O manual de referência reúne exclusivamente os capítulos **1 a 4**:
 catálogo de endpoints, estratégias e indicadores, exemplos de respostas
 e códigos de erro. O PDF usa a família tipográfica **Montserrat**.
 
