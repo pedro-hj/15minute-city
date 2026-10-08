@@ -124,3 +124,16 @@ uv run pytest
 uv run ruff check src tests
 uv run ruff format --check src tests
 ```
+
+## API de leitura
+
+Os resultados persistidos também podem ser consultados por uma API FastAPI
+protegida pelo cabeçalho `X-API-Key`:
+
+```bash
+uv run fifteen-minute-city-api
+```
+
+Com o servidor em execução, abra `http://localhost:8000/docs`. Consulte
+[`docs/API.md`](docs/API.md) para configuração, rotas disponíveis e implantação
+com Docker.
