@@ -49,8 +49,8 @@ jobs:
             echo "Unexpected fallback font in API manual"
             exit 1
           fi
-          pdftotext docs/API-manual.pdf - | grep -q '4. Catálogo completo'
-          pdftotext docs/API-manual.pdf - | grep -q '7. Códigos de resposta'
+          pdftotext docs/API-manual.pdf - | grep -q '1. Catálogo completo'
+          pdftotext docs/API-manual.pdf - | grep -q '4. Códigos de resposta'
 
       - name: Commit updated manual if needed
         run: |

@@ -1,6 +1,6 @@
 # Manual da API - 15minute-city
 
-## 4. Catálogo completo de endpoints
+## 1. Catálogo completo de endpoints
 
 Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são substituídos por valores reais.
 
@@ -21,7 +21,7 @@ Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são 
 | `GET /api/v1/cities/{city_id}/history/{strategy}/{metric}` | Histórico de uma métrica geral. |
 | `GET /api/v1/cities/{city_id}/history/{strategy}/{category}/{metric}` | Histórico de uma métrica de categoria. |
 
-### 4.1. Parâmetros dos caminhos
+### 1.1. Parâmetros dos caminhos
 
 | Parâmetro | Significado | Exemplos |
 | --- | --- | --- |
@@ -33,7 +33,7 @@ Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são 
 
 Os endpoints de lista e histórico recebem parâmetros de consulta opcionais: `limit` (padrão `100`, mínimo `1`, máximo `500`) e `offset` (padrão `0`, mínimo `0`). A ordenação é decrescente por data de processamento, com ID como critério de desempate. O campo `count` em históricos informa o número de itens **retornados na página**, e não o total de registros existentes no banco.
 
-## 5. Estratégias e interpretação dos indicadores
+## 2. Estratégias e interpretação dos indicadores
 
 A estratégia `population` corresponde à persistência `population_grid`: cada origem representa uma unidade espacial com peso populacional. É a referência indicada para responder **qual percentual da população** tem acesso aos serviços em até 15 minutos.
 
@@ -43,7 +43,7 @@ Para cada categoria, `coverage_percentage` é o percentual do peso de origens qu
 
 Os tempos médio e mediano são calculados entre origens que possuem caminho até algum estabelecimento da categoria. Consequentemente, **uma média de 59 minutos não significa que 59% das origens estejam cobertas**, nem que 17% tenham média de 15 minutos: a cobertura é expressa por `coverage_percentage`.
 
-### 5.1. Métricas de categoria
+### 2.1. Métricas de categoria
 
 | Métrica | Significado | Unidade |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ Os tempos médio e mediano são calculados entre origens que possuem caminho at�
 | `mean_travel_time_minutes` | Tempo médio ponderado entre origens alcançáveis. | minutos |
 | `median_travel_time_minutes` | Tempo mediano ponderado entre origens alcançáveis. | minutos |
 
-### 5.2. Métricas gerais
+### 2.2. Métricas gerais
 
 | Métrica | Significado |
 | --- | --- |
@@ -66,9 +66,9 @@ Os tempos médio e mediano são calculados entre origens que possuem caminho at�
 
 A API devolve porcentagens como números de `0` a `100` (por exemplo, `17.11`, não `0.1711`). O campo `unit` das respostas individuais informa `percent`, `minutes` ou a unidade de peso da estratégia.
 
-## 6. Exemplos de consultas e respostas
+## 3. Exemplos de consultas e respostas
 
-### 6.1. Municípios cadastrados
+### 3.1. Municípios cadastrados
 
 ```http
 GET /api/v1/cities
@@ -81,7 +81,7 @@ Exemplo **ilustrativo** de resposta HTTP `200`:
 [{"id":1,"name":"Praia Grande","country":"Brazil"}]
 ```
 
-### 6.2. Métrica específica: cobertura de saúde
+### 3.2. Métrica específica: cobertura de saúde
 
 ```http
 GET /api/v1/cities/1/latest/population/health/coverage_percentage
@@ -106,7 +106,7 @@ Resposta **ilustrativa**:
 
 Nesse exemplo, `82.5` representa 82,5% da população ponderada com acesso à categoria saúde em até 15 minutos. Os valores acima não representam medição real de Praia Grande.
 
-### 6.3. Índice geral e comparação
+### 3.3. Índice geral e comparação
 
 ```http
 GET /api/v1/cities/1/latest/population/overall_coverage_percentage
@@ -117,7 +117,7 @@ A primeira rota retorna apenas uma métrica no formato exemplificado acima. A se
 
 Quando presente, a comparação segue `population_report - node_report` e usa **pontos percentuais**. Um delta de `+8.0` significa que a cobertura ponderada pela população foi oito pontos percentuais maior do que a cobertura ponderada por nós, não 8% de aumento relativo.
 
-### 6.4. Histórico da cobertura da categoria cultura
+### 3.4. Histórico da cobertura da categoria cultura
 
 ```http
 GET /api/v1/cities/1/history/population/culture/coverage_percentage?limit=20&offset=0
@@ -125,7 +125,7 @@ GET /api/v1/cities/1/history/population/culture/coverage_percentage?limit=20&off
 
 A resposta contém dados de identificação do município, estratégia, categoria, métrica, `count` e um vetor `results`, com cada observação associada a um `execution_id` e `processed_at`. Um histórico vazio retorna `results: []` e `count: 0` se o município existir.
 
-## 7. Códigos de resposta e erros comuns
+## 4. Códigos de resposta e erros comuns
 
 | HTTP | Situação | Ação recomendada |
 | --- | --- | --- |
