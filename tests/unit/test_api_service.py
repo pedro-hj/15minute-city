@@ -63,7 +63,7 @@ def _report(
 
 
 def test_public_strategies_map_to_persisted_names() -> None:
-    assert resolve_strategy("nodes") == "graph_nodes"
+    assert resolve_strategy("nodes") == "network_nodes"
     assert resolve_strategy("population") == "population_grid"
     assert resolve_strategy("unknown") is None
 
