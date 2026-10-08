@@ -127,20 +127,7 @@ GET /api/v1/cities/1/history/population/culture/coverage_percentage?limit=20&off
 
 A resposta contém dados de identificação do município, estratégia, categoria, métrica, `count` e um vetor `results`, com cada observação associada a um `execution_id` e `processed_at`. Um histórico vazio retorna `results: []` e `count: 0` se o município existir.
 
-## 4. Códigos de resposta e erros comuns
-
-| HTTP | Situação | Ação recomendada |
-| --- | --- | --- |
-| `200` | Consulta bem-sucedida. | Ler o JSON; listas vazias são possíveis. |
-| `401` | Chave ausente ou inválida em `/api/v1/`. | Conferir `X-API-Key` sem divulgar a chave. |
-| `404` | Município, execução, categoria, estratégia ou métrica indisponível. | Consultar IDs, códigos e execuções concluídas. |
-| `422` | Parâmetro inválido, como `limit=0` ou ID não numérico. | Corrigir tipos e limites informados. |
-| `503` | Nenhuma chave de API configurada no servidor. | Administrador deve configurar `API_KEYS`. |
-| `500` | Falha inesperada, incluindo possíveis problemas de banco. | Consultar logs do serviço e saúde do banco. |
-
-**Atenção:** a rota `/health` confirma que o servidor HTTP responde, mas **não verifica a conectividade com o banco de dados**. Uma consulta às cidades autenticada é um teste mais abrangente.
-
-### 4.1. Solicitação pública de análises
+### 3.5. Solicitação pública de análises
 
 O serviço permite que qualquer usuário **solicite** o cálculo de um município
 brasileiro informando nome da cidade, estado e país, sem precisar de `X-API-Key`. As rotas de consulta de indicadores
@@ -190,3 +177,17 @@ arquivos `data/input/grade_id*.zip`, escolhendo arquivos por metadados
 geoespaciais, sem relacionar nomes de ZIPs a UFs. Células sobrepostas com
 mesmo `ID_UNICO` são contadas uma vez. Os limites municipais são
 obtidos da API de malhas do IBGE e ficam em cache local.
+
+## 4. Códigos de resposta e erros comuns
+
+| HTTP | Situação | Ação recomendada |
+| --- | --- | --- |
+| `200` | Consulta bem-sucedida. | Ler o JSON; listas vazias são possíveis. |
+| `401` | Chave ausente ou inválida em endpoints protegidos de `/api/v1/`. | Conferir `X-API-Key` sem divulgar a chave. |
+| `404` | Município, execução, categoria, estratégia ou métrica indisponível. | Consultar IDs, códigos e execuções concluídas. |
+| `422` | Parâmetro inválido ou município, UF e país não reconhecidos. | Corrigir tipos e limites informados. |
+| `429` | Intervalo entre novas análises ainda não cumprido. | Consultar `Retry-After`. |
+| `503` | Chave não configurada, fila cheia ou serviço externo indisponível. | Administrador deve configurar `API_KEYS`. |
+| `500` | Falha inesperada, incluindo possíveis problemas de banco. | Consultar logs do serviço e saúde do banco. |
+
+**Atenção:** a rota `/health` confirma que o servidor HTTP responde, mas **não verifica a conectividade com o banco de dados**. Uma consulta às cidades autenticada é um teste mais abrangente.
