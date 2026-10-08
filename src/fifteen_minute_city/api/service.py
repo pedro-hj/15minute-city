@@ -188,7 +188,7 @@ def build_comparison(
 
 
 def build_detailed_result(db: Session, execution: Execution) -> dict[str, Any]:
-    node_report = build_strategy_report(db, execution.id, "graph_nodes")
+    node_report = build_strategy_report(db, execution.id, "network_nodes")
     population_report = build_strategy_report(db, execution.id, "population_grid")
     return {
         "execution": serialize_execution(execution),
