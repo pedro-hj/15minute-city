@@ -39,7 +39,7 @@ services:
       - DATABASE_URL=${API_DATABASE_URL:-${DATABASE_URL:-}}
     entrypoint: ["fifteen-minute-city-api"]
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
 
   # Optional local PostGIS database for offline development and local testing
   db-local:
