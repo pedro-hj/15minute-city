@@ -30,9 +30,7 @@ router = APIRouter(prefix="/api/v1/analyses", tags=["analyses"])
 
 
 @router.post("", status_code=202)
-def request_analysis(
-    body: AnalysisSubmission, request: Request, response: Response
-):
+def request_analysis(body: AnalysisSubmission, request: Request, response: Response):
     """Resolve names to official codes; rate-limit only newly admitted jobs."""
     client_ip = request.client.host if request.client is not None else ""
     if not client_ip:

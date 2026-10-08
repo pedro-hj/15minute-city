@@ -50,15 +50,14 @@ STATE_NAMES = {
 
 def _normal(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text.strip())
-    return "".join(
-        ch for ch in normalized if not unicodedata.combining(ch)
-    ).casefold()
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).casefold()
 
 
 def _state_uf(state: str) -> str:
     normalized = _normal(state)
     matches = [
-        uf for uf, name in STATE_NAMES.items()
+        uf
+        for uf, name in STATE_NAMES.items()
         if normalized in (_normal(uf), _normal(name))
     ]
     if len(matches) != 1:
@@ -101,7 +100,12 @@ def _municipalities_for_state(uf: str) -> tuple[tuple[str, str], ...]:
             code = str(item["id"])
         except (KeyError, TypeError, ValueError) as exc:
             raise IbgeUnavailable("Unexpected IBGE municipality entry") from exc
-        if not isinstance(name, str) or not code.isascii() or not code.isdigit() or len(code) != 7:
+        if (
+            not isinstance(name, str)
+            or not code.isascii()
+            or not code.isdigit()
+            or len(code) != 7
+        ):
             raise IbgeUnavailable("Unexpected IBGE municipality entry")
         results.append((name, code))
     return tuple(results)
@@ -122,7 +126,8 @@ def municipality_by_location(
     if not target:
         raise ValueError("City name is required")
     matches = [
-        (name, code) for name, code in _municipalities_for_state(uf)
+        (name, code)
+        for name, code in _municipalities_for_state(uf)
         if _normal(name) == target
     ]
     if len(matches) != 1:

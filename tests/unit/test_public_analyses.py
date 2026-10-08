@@ -170,14 +170,16 @@ def test_named_municipalities_resolve_to_official_codes(monkeypatch):
         "SP": (("Praia Grande", "3541000"), ("São Vicente", "3551009")),
         "SC": (("Praia Grande", "4213807"),),
     }
-    monkeypatch.setattr(
-        ibge, "_municipalities_for_state", lambda uf: lookup[uf]
-    )
+    monkeypatch.setattr(ibge, "_municipalities_for_state", lambda uf: lookup[uf])
     assert municipality_by_location("praia grande", "Sao Paulo", "BR") == (
-        "3541000", "Praia Grande", "São Paulo"
+        "3541000",
+        "Praia Grande",
+        "São Paulo",
     )
     assert municipality_by_location("PRAIA GRANDE", "SC", "Brasil") == (
-        "4213807", "Praia Grande", "Santa Catarina"
+        "4213807",
+        "Praia Grande",
+        "Santa Catarina",
     )
     with pytest.raises(ValueError, match="not found"):
         municipality_by_location("inexistente", "São Paulo", "Brazil")
@@ -205,8 +207,9 @@ def test_official_state_municipality_listing_is_cached(monkeypatch):
 
 def test_post_accepts_location_without_ibge_code_or_api_key(monkeypatch):
     from fastapi.testclient import TestClient
-    from fifteen_minute_city.api.app import app
+
     from fifteen_minute_city.api import analysis_routes
+    from fifteen_minute_city.api.app import app
 
     seen = []
 
@@ -238,7 +241,5 @@ def test_post_accepts_location_without_ibge_code_or_api_key(monkeypatch):
     assert seen[0] == ("resolve", "Praia Grande", "São Paulo", "Brazil")
     assert seen[1][0:4] == ("submit", "3541000", "Praia Grande", "São Paulo")
 
-    invalid = TestClient(app).post(
-        "/api/v1/analyses", json={"ibge_code": "3541000"}
-    )
+    invalid = TestClient(app).post("/api/v1/analyses", json={"ibge_code": "3541000"})
     assert invalid.status_code == 422
