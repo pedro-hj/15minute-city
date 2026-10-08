@@ -186,7 +186,6 @@ def test_detailed_result_uses_persisted_strategy_names(monkeypatch) -> None:
 
     def fake_report(_db, _execution_id, strategy):
         strategies.append(strategy)
-        return None
 
     monkeypatch.setattr(service_module, "build_strategy_report", fake_report)
 
