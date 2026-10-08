@@ -1,0 +1,49 @@
+name: Publish API manual PDF
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - docs/API.md
+      - scripts/generate_api_manual.py
+      - src/fifteen_minute_city/api/**
+      - .github/workflows/api-manual.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    name: Render and commit PDF
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.17"
+
+      - name: Generate versioned PDF from Markdown
+        run: |
+          uv run --no-project --with reportlab==4.4.9 \
+            python scripts/generate_api_manual.py
+
+      - name: Commit updated manual if needed
+        run: |
+          git add docs/API-manual.pdf
+          if git diff --cached --quiet; then
+            echo "PDF already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(api): regenerate API manual PDF"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

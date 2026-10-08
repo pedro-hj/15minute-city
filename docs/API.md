@@ -1,75 +1,243 @@
-# API de indicadores
+# Manual de uso da API - 15minute-city
 
-A API FastAPI fornece acesso somente de leitura aos resultados agregados já
-persistidos no PostgreSQL/PostGIS. Ela não executa análises geográficas.
+**Versão da API:** `v1` (aplicação `1.0.0`)  
+**Revisão do manual:** 08/10/2026  
+**Público-alvo:** estudantes, desenvolvedores e pesquisadores que desejam consultar os indicadores urbanos calculados pelo projeto.
 
-## Execução local
+## 1. Visão geral
 
-Defina pelo menos `DATABASE_URL` e `API_KEYS` no arquivo `.env`:
+A API do **15minute-city** permite consultar resultados **já calculados e persistidos** no PostgreSQL/PostGIS. Ela não inicia processamento geográfico, não recebe arquivos e não modifica resultados. Os dados publicados são agregados por município, execução, estratégia de origem e categoria de serviço.
 
-```env
-DATABASE_URL=postgresql+psycopg://user:password@host/database?sslmode=require
-API_KEYS=uma-chave-longa-e-aleatoria
+A análise avalia acesso a pé, em um limite configurável de tempo (em geral, 15 minutos), às categorias **saúde (`health`), educação (`education`), aquisição de alimentos (`food`) e cultura (`culture`)**. Farmácias podem compor a categoria de saúde; ensino superior não entra em educação; postos de gasolina não são considerados; cultura inclui modalidades como cinema, biblioteca e museu, conforme a classificação utilizada no processamento.
+
+**Importante:** a API pode exibir municípios e categorias cadastrados mesmo quando não houver execuções concluídas. Os endpoints de resultados e históricos disponibilizam somente execuções com `status="completed"`.
+
+## 2. Endereços e autenticação
+
+| Ambiente | URL base | Observação |
+| --- | --- | --- |
+| Produção (após DNS e HTTPS habilitados) | `https://cidade15.com.br` | Endereço público planejado; confirme que o certificado TLS está ativo. |
+| Teste local na VPS | `http://127.0.0.1:8000` | Acesso local ao Uvicorn, sem Nginx. |
+| Pelo Nginx na VPS | `http://127.0.0.1` | Usa o proxy reverso, sem depender do DNS público. |
+
+Todos os endpoints de dados em `/api/v1/` exigem um cabeçalho HTTP com uma chave configurada no servidor:
+
+```http
+X-API-Key: SUA_CHAVE
 ```
 
-No Docker Compose, `API_DATABASE_URL` pode ser definida para que apenas o
-container da API utilize a conexão somente leitura. Sem ela, o Compose usa
-`DATABASE_URL`, o que facilita o desenvolvimento local.
+Obtenha a chave com o administrador da instância. Nunca coloque uma chave real no GitHub, em um PDF público ou em um repositório de frontend. **A autenticação da API não é um mecanismo de autenticação de usuários finais:** qualquer pessoa com uma chave válida pode consultar os recursos disponíveis. Para um painel público, avalie uma camada intermediária no servidor, em vez de expor a chave no navegador.
 
-Depois execute:
+A rota `GET /health` é pública e retorna apenas o estado do processo. Já `GET /api/v1/version` exige chave. A documentação FastAPI é servida em `/docs`, a especificação em `/openapi.json` e o ReDoc em `/redoc`, todos no Uvicorn local. Na configuração atual do Nginx, apenas `/api/` é encaminhado; por isso essas páginas podem não estar disponíveis externamente.
+
+## 3. Início rápido
+
+Primeiro verifique se o serviço responde:
 
 ```bash
+curl -i http://127.0.0.1:8000/health
+```
+
+Resposta esperada:
+
+```json
+{"status":"ok"}
+```
+
+Use uma variável de ambiente para evitar repetir a chave no comando. Configure-a sem compartilhar seu valor:
+
+```bash
+read -rsp "Chave da API: " API_KEY; echo
+BASE_URL="http://127.0.0.1:8000"
+curl -sS -H "X-API-Key: $API_KEY" "$BASE_URL/api/v1/cities"
+unset API_KEY
+```
+
+Para consultar o índice geral da população no último processamento concluído da cidade de ID `1`:
+
+```bash
+curl -sS -H "X-API-Key: $API_KEY" \
+  "$BASE_URL/api/v1/cities/1/latest/population/overall_coverage_percentage"
+```
+
+**Nota:** configure `API_KEY` antes de executar o segundo exemplo. O ID `1` é ilustrativo: primeiro consulte `/api/v1/cities` para obter um ID real.
+
+## 4. Catálogo completo de endpoints
+
+Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são substituídos por valores reais.
+
+| Método e caminho | Finalidade |
+| --- | --- |
+| `GET /health` | Verifica se o processo HTTP está respondendo (sem chave). |
+| `GET /api/v1/version` | Informa nome e versão da API. |
+| `GET /api/v1/cities` | Lista municípios cadastrados. |
+| `GET /api/v1/cities/{city_id}` | Obtém um município específico. |
+| `GET /api/v1/categories` | Lista as categorias registradas. |
+| `GET /api/v1/cities/{city_id}/executions` | Lista execuções concluídas do município. |
+| `GET /api/v1/executions/{execution_id}` | Retorna um resultado detalhado por execução concluída. |
+| `GET /api/v1/cities/{city_id}/latest` | Retorna o resultado detalhado da execução concluída mais recente. |
+| `GET /api/v1/cities/{city_id}/latest/{strategy}` | Retorna o relatório completo de uma estratégia. |
+| `GET /api/v1/cities/{city_id}/latest/{strategy}/{metric}` | Consulta uma métrica geral da última execução. |
+| `GET /api/v1/cities/{city_id}/latest/{strategy}/{category}/{metric}` | Consulta uma métrica de categoria da última execução. |
+| `GET /api/v1/cities/{city_id}/history` | Retorna os relatórios detalhados ao longo das execuções concluídas. |
+| `GET /api/v1/cities/{city_id}/history/{strategy}/{metric}` | Histórico de uma métrica geral. |
+| `GET /api/v1/cities/{city_id}/history/{strategy}/{category}/{metric}` | Histórico de uma métrica de categoria. |
+
+### 4.1. Parâmetros dos caminhos
+
+| Parâmetro | Significado | Exemplos |
+| --- | --- | --- |
+| `city_id` | Identificador numérico do município. | `1`, `4` |
+| `execution_id` | Identificador numérico de uma execução concluída. | `12` |
+| `strategy` | Estratégia pública de origem. | `population`, `nodes` |
+| `category` | Código de categoria registrado no banco. | `health`, `education`, `food`, `culture` |
+| `metric` | Nome da métrica disponibilizada no contexto solicitado. | `coverage_percentage` |
+
+Os endpoints de lista e histórico recebem parâmetros de consulta opcionais: `limit` (padrão `100`, mínimo `1`, máximo `500`) e `offset` (padrão `0`, mínimo `0`). A ordenação é decrescente por data de processamento, com ID como critério de desempate. O campo `count` em históricos informa o número de itens **retornados na página**, e não o total de registros existentes no banco.
+
+## 5. Estratégias e interpretação dos indicadores
+
+A estratégia `population` corresponde à persistência `population_grid`: cada origem representa uma unidade espacial com peso populacional. É a referência indicada para responder **qual percentual da população** tem acesso aos serviços em até 15 minutos.
+
+A estratégia `nodes` corresponde à persistência `network_nodes`: cada nó do grafo caminhável tem peso equivalente. Ela serve principalmente à comparação metodológica e **não** deve ser interpretada como percentual populacional.
+
+Para cada categoria, `coverage_percentage` é o percentual do peso de origens que consegue alcançar ao menos um serviço daquela categoria dentro do limiar. `overall_coverage_percentage` exige que as origens atendam **simultaneamente a todas as categorias analisadas**. Portanto, o índice geral não é a média simples dos índices por categoria.
+
+Os tempos médio e mediano são calculados entre origens que possuem caminho até algum estabelecimento da categoria. Consequentemente, **uma média de 59 minutos não significa que 59% das origens estejam cobertas**, nem que 17% tenham média de 15 minutos: a cobertura é expressa por `coverage_percentage`.
+
+### 5.1. Métricas de categoria
+
+| Métrica | Significado | Unidade |
+| --- | --- | --- |
+| `total_weight` | Soma dos pesos das origens consideradas. | `population` ou `node_count` |
+| `reachable_weight` | Peso com caminho até um serviço, sem exigir 15 minutos. | Peso da estratégia |
+| `within_threshold_weight` | Peso com caminho até serviço em até o limiar. | Peso da estratégia |
+| `unreachable_weight` | Peso sem caminho até o serviço. | Peso da estratégia |
+| `coverage_percentage` | Percentual de peso em até o limiar. | `%` |
+| `unreachable_percentage` | Percentual sem caminho até serviço. | `%` |
+| `mean_travel_time_minutes` | Tempo médio ponderado entre origens alcançáveis. | minutos |
+| `median_travel_time_minutes` | Tempo mediano ponderado entre origens alcançáveis. | minutos |
+
+### 5.2. Métricas gerais
+
+| Métrica | Significado |
+| --- | --- |
+| `total_weight` | Peso total de origens analisadas. |
+| `overall_coverage_percentage` | Percentual de origens com acesso às quatro categorias analisadas em até o limiar. |
+| `overall_unreachable_percentage` | Percentual de origens que não consegue alcançar alguma das categorias por caminho de rede, sem relação direta com o limiar. |
+
+A API devolve porcentagens como números de `0` a `100` (por exemplo, `17.11`, não `0.1711`). O campo `unit` das respostas individuais informa `percent`, `minutes` ou a unidade de peso da estratégia.
+
+## 6. Exemplos de consultas e respostas
+
+### 6.1. Municípios cadastrados
+
+```http
+GET /api/v1/cities
+X-API-Key: SUA_CHAVE
+```
+
+Exemplo **ilustrativo** de resposta HTTP `200`:
+
+```json
+[{"id":1,"name":"Praia Grande","country":"Brazil"}]
+```
+
+### 6.2. Métrica específica: cobertura de saúde
+
+```http
+GET /api/v1/cities/1/latest/population/health/coverage_percentage
+X-API-Key: SUA_CHAVE
+```
+
+Resposta **ilustrativa**:
+
+```json
+{
+  "city_id": 1,
+  "execution_id": 12,
+  "processed_at": "2026-10-08T12:00:00+00:00",
+  "strategy": "population",
+  "category": "health",
+  "metric": "coverage_percentage",
+  "value": 82.5,
+  "unit": "percent",
+  "threshold_minutes": 15.0
+}
+```
+
+Nesse exemplo, `82.5` representa 82,5% da população ponderada com acesso à categoria saúde em até 15 minutos. Os valores acima não representam medição real de Praia Grande.
+
+### 6.3. Índice geral e comparação
+
+```http
+GET /api/v1/cities/1/latest/population/overall_coverage_percentage
+GET /api/v1/cities/1/latest
+```
+
+A primeira rota retorna apenas uma métrica no formato exemplificado acima. A segunda retorna `execution`, `node_report`, `population_report` e `comparison`. Os relatórios de estratégia podem ser `null` se não foram persistidos na execução. A comparação também será `null` quando alguma estratégia estiver indisponível.
+
+Quando presente, a comparação segue `population_report - node_report` e usa **pontos percentuais**. Um delta de `+8.0` significa que a cobertura ponderada pela população foi oito pontos percentuais maior do que a cobertura ponderada por nós, não 8% de aumento relativo.
+
+### 6.4. Histórico da cobertura da categoria cultura
+
+```http
+GET /api/v1/cities/1/history/population/culture/coverage_percentage?limit=20&offset=0
+```
+
+A resposta contém dados de identificação do município, estratégia, categoria, métrica, `count` e um vetor `results`, com cada observação associada a um `execution_id` e `processed_at`. Um histórico vazio retorna `results: []` e `count: 0` se o município existir.
+
+## 7. Códigos de resposta e erros comuns
+
+| HTTP | Situação | Ação recomendada |
+| --- | --- | --- |
+| `200` | Consulta bem-sucedida. | Ler o JSON; listas vazias são possíveis. |
+| `401` | Chave ausente ou inválida em `/api/v1/`. | Conferir `X-API-Key` sem divulgar a chave. |
+| `404` | Município, execução, categoria, estratégia ou métrica indisponível. | Consultar IDs, códigos e execuções concluídas. |
+| `422` | Parâmetro inválido, como `limit=0` ou ID não numérico. | Corrigir tipos e limites informados. |
+| `503` | Nenhuma chave de API configurada no servidor. | Administrador deve configurar `API_KEYS`. |
+| `500` | Falha inesperada, incluindo possíveis problemas de banco. | Consultar logs do serviço e saúde do banco. |
+
+**Atenção:** a rota `/health` confirma que o servidor HTTP responde, mas **não verifica a conectividade com o banco de dados**. Uma consulta às cidades autenticada é um teste mais abrangente.
+
+## 8. Execução e configuração do servidor
+
+A API é executada por FastAPI/Uvicorn e depende de `DATABASE_URL` e `API_KEYS`. As variáveis `API_HOST` (padrão `127.0.0.1`) e `API_PORT` (padrão `8000`) definem sua interface e porta. `CORS_ORIGINS` é opcional e permite origens específicas no navegador. A política de CORS não substitui autenticação.
+
+```bash
+uv sync --locked
 uv run fifteen-minute-city-api
 ```
 
-A documentação interativa estará em `http://localhost:8000/docs`. Clique em
-**Authorize** e informe a chave. Em chamadas diretas, envie:
-
-```text
-X-API-Key: uma-chave-longa-e-aleatoria
-```
-
-Também é possível iniciar o container da API:
+Como alternativa local com Docker Compose:
 
 ```bash
 docker compose up --build api
 ```
 
-## Consultas principais
+O Docker Compose aceita `API_DATABASE_URL` para usar uma conexão apenas de leitura no container da API; sem ela, usa `DATABASE_URL` como alternativa. Em execução direta por `systemd`, configure `DATABASE_URL` no arquivo de ambiente do serviço. Mantenha credenciais **fora** do repositório e use um usuário PostgreSQL limitado a `SELECT`.
 
-```text
-GET /api/v1/cities
-GET /api/v1/categories
-GET /api/v1/cities/{city_id}/executions
-GET /api/v1/cities/{city_id}/latest
-GET /api/v1/cities/{city_id}/history
+Na VPS, o serviço pode ser inspecionado com:
+
+```bash
+sudo systemctl status fifteen-minute-city-api
+sudo journalctl -u fifteen-minute-city-api -n 100 --no-pager
+curl -i http://127.0.0.1:8000/health
 ```
 
-As estratégias públicas são `nodes` e `population`. Exemplos:
+Para acessar o domínio público com segurança, conclua o apontamento DNS e configure TLS no Nginx. Não transmita `X-API-Key` por HTTP em redes não confiáveis.
 
-```text
-GET /api/v1/cities/1/latest/nodes/health/coverage_percentage
-GET /api/v1/cities/1/latest/nodes/overall_coverage_percentage
-GET /api/v1/cities/1/history/population/health/coverage_percentage
+## 9. Atualização e manutenção deste manual
+
+**Fonte oficial:** `docs/API.md`. **PDF derivado:** `docs/API-manual.pdf`. Ao modificar rotas, autenticação, nomes de métricas, formatos de respostas, versão ou comportamento da API, atualize este Markdown no **mesmo pull request**.
+
+O workflow do repositório regenera automaticamente o PDF quando há alterações relevantes na API ou neste documento. Um teste automatizado verifica que os caminhos e nomes de métricas expostos pela aplicação aparecem neste manual. Isso ajuda a identificar divergências, mas não substitui revisão humana de exemplos e semântica.
+
+Para gerar o PDF manualmente, com `uv` disponível:
+
+```bash
+uv run --no-project --with reportlab==4.4.9 \
+  python scripts/generate_api_manual.py
 ```
 
-As respostas históricas são ordenadas da execução mais recente para a mais
-antiga. Apenas execuções com estado `completed` são publicadas.
-
-## Usuário de banco somente leitura
-
-Na produção, a `DATABASE_URL` da API deve apontar para um usuário diferente do
-processador. Um administrador pode criar esse usuário no banco com permissões
-equivalentes a:
-
-```sql
-CREATE ROLE api_reader LOGIN PASSWORD 'troque-esta-senha';
-GRANT CONNECT ON DATABASE defaultdb TO api_reader;
-GRANT USAGE ON SCHEMA public TO api_reader;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO api_reader;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT SELECT ON TABLES TO api_reader;
-```
-
-O SQL deve ser adaptado ao nome do banco e executado com uma conta
-administrativa. A senha não deve ser versionada no repositório.
+**Versões:** a rota `GET /api/v1/version` informa a versão da aplicação (atualmente `1.0.0`). O prefixo `/api/v1/` identifica o contrato HTTP principal. Mudanças incompatíveis exigem avaliação de versionamento e atualização desta documentação.
