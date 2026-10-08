@@ -15,9 +15,7 @@ MANUAL = Path(__file__).resolve().parents[2] / "docs" / "API.md"
 
 def test_api_manual_documents_every_get_endpoint() -> None:
     text = MANUAL.read_text(encoding="utf-8")
-    documented = set(
-        re.findall(r"^\| `GET (/[^`]+)`", text, flags=re.MULTILINE)
-    )
+    documented = set(re.findall(r"^\| `GET (/[^`]+)`", text, flags=re.MULTILINE))
     actual = {
         route.path
         for route in app.routes
@@ -34,6 +32,4 @@ def test_api_manual_lists_all_public_metrics_and_strategies() -> None:
     for metric in CATEGORY_METRICS | OVERALL_METRICS:
         assert f"`{metric}`" in text, f"Undocumented API metric: {metric}"
     for strategy in PUBLIC_STRATEGIES:
-        assert f"`{strategy}`" in text, (
-            f"Undocumented public strategy: {strategy}"
-        )
+        assert f"`{strategy}`" in text, f"Undocumented public strategy: {strategy}"

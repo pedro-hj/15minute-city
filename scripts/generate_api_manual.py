@@ -60,40 +60,81 @@ def styles() -> dict[str, ParagraphStyle]:
     base = {"alignment": TA_LEFT}
     return {
         "title": ParagraphStyle(
-            "Title", **base, fontName="ManualSans-Bold",
-            textColor=INK, fontSize=24, leading=29, spaceAfter=17,
+            "Title",
+            **base,
+            fontName="ManualSans-Bold",
+            textColor=INK,
+            fontSize=24,
+            leading=29,
+            spaceAfter=17,
         ),
         "h2": ParagraphStyle(
-            "H2", **base, fontName="ManualSans-Bold",
-            textColor=BLUE, fontSize=14, leading=19,
-            spaceBefore=16, spaceAfter=8, keepWithNext=1,
+            "H2",
+            **base,
+            fontName="ManualSans-Bold",
+            textColor=BLUE,
+            fontSize=14,
+            leading=19,
+            spaceBefore=16,
+            spaceAfter=8,
+            keepWithNext=1,
         ),
         "h3": ParagraphStyle(
-            "H3", **base, fontName="ManualSans-Bold",
-            textColor=INK, fontSize=10.5, leading=15,
-            spaceBefore=12, spaceAfter=7, keepWithNext=1,
+            "H3",
+            **base,
+            fontName="ManualSans-Bold",
+            textColor=INK,
+            fontSize=10.5,
+            leading=15,
+            spaceBefore=12,
+            spaceAfter=7,
+            keepWithNext=1,
         ),
         "body": ParagraphStyle(
-            "Body", **base, fontName="ManualSans",
-            textColor=INK, fontSize=9, leading=14.8,
-            spaceAfter=8, allowWidows=0, allowOrphans=0,
+            "Body",
+            **base,
+            fontName="ManualSans",
+            textColor=INK,
+            fontSize=9,
+            leading=14.8,
+            spaceAfter=8,
+            allowWidows=0,
+            allowOrphans=0,
         ),
         "bullet": ParagraphStyle(
-            "Bullet", **base, fontName="ManualSans",
-            textColor=INK, fontSize=9, leading=14.8,
-            leftIndent=13, firstLineIndent=-11, spaceAfter=5,
+            "Bullet",
+            **base,
+            fontName="ManualSans",
+            textColor=INK,
+            fontSize=9,
+            leading=14.8,
+            leftIndent=13,
+            firstLineIndent=-11,
+            spaceAfter=5,
         ),
         "cell": ParagraphStyle(
-            "Cell", **base, fontName="ManualSans",
-            textColor=INK, fontSize=7.35, leading=11, splitLongWords=1,
+            "Cell",
+            **base,
+            fontName="ManualSans",
+            textColor=INK,
+            fontSize=7.35,
+            leading=11,
+            splitLongWords=1,
         ),
         "cellhead": ParagraphStyle(
-            "CellHead", **base, fontName="ManualSans-Bold",
-            textColor=BLUE, fontSize=7.4, leading=11,
+            "CellHead",
+            **base,
+            fontName="ManualSans-Bold",
+            textColor=BLUE,
+            fontSize=7.4,
+            leading=11,
         ),
         "code": ParagraphStyle(
-            "Code", fontName="ManualMono",
-            textColor=INK, fontSize=7.1, leading=11.2,
+            "Code",
+            fontName="ManualMono",
+            textColor=INK,
+            fontSize=7.1,
+            leading=11.2,
         ),
     }
 
@@ -118,7 +159,9 @@ def code_block(lines: list[str], ss: dict[str, ParagraphStyle]) -> LongTable:
         else:
             expanded.extend(
                 textwrap.wrap(
-                    line, width=91, break_long_words=True,
+                    line,
+                    width=91,
+                    break_long_words=True,
                     break_on_hyphens=False,
                 )
             )
@@ -144,9 +187,7 @@ def code_block(lines: list[str], ss: dict[str, ParagraphStyle]) -> LongTable:
     return table
 
 
-def markdown_table(
-    lines: list[str], ss: dict[str, ParagraphStyle]
-) -> list:
+def markdown_table(lines: list[str], ss: dict[str, ParagraphStyle]) -> list:
     parsed: list[list[str]] = []
     for line in lines:
         row = [cell.strip() for cell in line.strip("|").split("|")]
@@ -171,9 +212,7 @@ def markdown_table(
         ]
         for index, row in enumerate(parsed)
     ]
-    table = LongTable(
-        rows, colWidths=widths, repeatRows=1, hAlign="LEFT"
-    )
+    table = LongTable(rows, colWidths=widths, repeatRows=1, hAlign="LEFT")
     table.setStyle(
         TableStyle(
             [
@@ -183,7 +222,8 @@ def markdown_table(
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 (
                     "ROWBACKGROUNDS",
-                    (0, 1), (-1, -1),
+                    (0, 1),
+                    (-1, -1),
                     [colors.white, colors.HexColor("#FAFCFD")],
                 ),
                 ("LEFTPADDING", (0, 0), (-1, -1), 8),
@@ -204,9 +244,7 @@ def parse_markdown(text: str, ss: dict[str, ParagraphStyle]) -> list:
 
     def flush_paragraph() -> None:
         if paragraph:
-            story.append(
-                Paragraph(inline(" ".join(paragraph)), ss["body"])
-            )
+            story.append(Paragraph(inline(" ".join(paragraph)), ss["body"]))
             paragraph.clear()
 
     def flush_table() -> None:
@@ -241,8 +279,11 @@ def parse_markdown(text: str, ss: dict[str, ParagraphStyle]) -> list:
             story.append(Spacer(1, 15))
             story.append(
                 HRFlowable(
-                    width="12%", thickness=3, color=BLUE,
-                    hAlign="LEFT", spaceAfter=14,
+                    width="12%",
+                    thickness=3,
+                    color=BLUE,
+                    hAlign="LEFT",
+                    spaceAfter=14,
                 )
             )
             story.append(Paragraph(inline(line[2:]), ss["title"]))
@@ -254,9 +295,7 @@ def parse_markdown(text: str, ss: dict[str, ParagraphStyle]) -> list:
             story.append(Paragraph(inline(line[4:]), ss["h3"]))
         elif line.startswith("- "):
             flush_paragraph()
-            story.append(
-                Paragraph("•  " + inline(line[2:]), ss["bullet"])
-            )
+            story.append(Paragraph("•  " + inline(line[2:]), ss["bullet"]))
         else:
             paragraph.append(line.removesuffix("  "))
 
