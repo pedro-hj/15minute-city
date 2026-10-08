@@ -33,3 +33,9 @@ def test_api_manual_lists_all_public_metrics_and_strategies() -> None:
         assert f"`{metric}`" in text, f"Undocumented API metric: {metric}"
     for strategy in PUBLIC_STRATEGIES:
         assert f"`{strategy}`" in text, f"Undocumented public strategy: {strategy}"
+
+
+def test_api_manual_contains_only_chapters_4_to_7() -> None:
+    text = MANUAL.read_text(encoding="utf-8")
+    chapters = re.findall(r"^## ([0-9]+)\.", text, flags=re.MULTILINE)
+    assert chapters == ["4", "5", "6", "7"]

@@ -12,6 +12,7 @@ import re
 import textwrap
 from pathlib import Path
 
+from reportlab import rl_config
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -41,14 +42,21 @@ PALE = colors.HexColor("#F1F5F8")
 
 
 def register_fonts() -> None:
-    directory = Path("/usr/share/fonts/truetype/dejavu")
+    """Use the same Montserrat family for headings, body text and code."""
+
+    directory = Path("/usr/share/fonts/truetype/montserrat")
     files = {
-        "ManualSans": directory / "DejaVuSans.ttf",
-        "ManualSans-Bold": directory / "DejaVuSans-Bold.ttf",
-        "ManualMono": directory / "DejaVuSansMono.ttf",
+        "ManualSans": directory / "Montserrat-Regular.ttf",
+        "ManualSans-Bold": directory / "Montserrat-Bold.ttf",
+        "ManualMono": directory / "Montserrat-Medium.ttf",
     }
-    if not all(path.exists() for path in files.values()):
-        raise RuntimeError("DejaVu fonts are required (install fonts-dejavu-core)")
+    missing = [str(path) for path in files.values() if not path.is_file()]
+    if missing:
+        raise RuntimeError(
+            "Montserrat font files not found: "
+            + ", ".join(missing)
+            + ". Install the fonts-montserrat system package."
+        )
     for name, path in files.items():
         pdfmetrics.registerFont(TTFont(name, str(path)))
     pdfmetrics.registerFontFamily(
@@ -314,11 +322,11 @@ def page(pdf: canvas.Canvas, doc: SimpleDocTemplate) -> None:
     pdf.line(59, height - 44, width - 59, height - 44)
     pdf.setFont("ManualSans-Bold", 7.8)
     pdf.setFillColor(BLUE)
-    pdf.drawString(59, height - 35, "15MINUTE-CITY  /  DOCUMENTAÇÃO DA API")
+    pdf.drawString(59, height - 35, "15MINUTE-CITY  /  REFERÊNCIA DA API")
     pdf.line(59, 51, width - 59, 51)
     pdf.setFillColor(MUTED)
     pdf.setFont("ManualSans", 7.4)
-    pdf.drawString(59, 38, "Manual de uso · API v1 · 08/10/2026")
+    pdf.drawString(59, 38, "Endpoints, indicadores e exemplos · API v1")
     pdf.drawRightString(width - 59, 38, str(doc.page))
     pdf.restoreState()
 
@@ -328,6 +336,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=TARGET)
     args = parser.parse_args()
     register_fonts()
+    rl_config.canvas_basefontname = "ManualSans"
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     document = SimpleDocTemplate(

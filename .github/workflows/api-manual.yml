@@ -31,10 +31,26 @@ jobs:
         with:
           version: "0.12.17"
 
+      - name: Install Montserrat and PDF inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fonts-montserrat poppler-utils
+
       - name: Generate versioned PDF from Markdown
         run: |
           uv run --no-project --with reportlab==4.4.9 \
             python scripts/generate_api_manual.py
+
+      - name: Verify Montserrat and the four reference chapters
+        run: |
+          pdffonts docs/API-manual.pdf
+          pdffonts docs/API-manual.pdf | grep -q Montserrat
+          if pdffonts docs/API-manual.pdf | grep -Eq 'DejaVu|Liberation'; then
+            echo "Unexpected fallback font in API manual"
+            exit 1
+          fi
+          pdftotext docs/API-manual.pdf - | grep -q '4. Catálogo completo'
+          pdftotext docs/API-manual.pdf - | grep -q '7. Códigos de resposta'
 
       - name: Commit updated manual if needed
         run: |
