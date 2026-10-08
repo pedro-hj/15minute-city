@@ -41,6 +41,11 @@ dev = [
     "ruff>=0.15.20",
 ]
 
+[tool.ruff]
+extend-exclude = [
+    "alembic/versions",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
