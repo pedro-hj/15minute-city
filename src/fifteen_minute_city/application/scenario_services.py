@@ -56,7 +56,7 @@ def load_service_scenario(
         properties = feature.get("properties")
         location = feature.get("geometry")
         if not isinstance(properties, dict) or not isinstance(location, dict):
-            raise ValueError(f"Feature {index} requires properties and geometry")
+            raise TypeError(f"Feature {index} requires properties and geometry")
         category = properties.get("category")
         if not isinstance(category, str) or category not in categories:
             raise ValueError(

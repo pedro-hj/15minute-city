@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
-from math import isfinite
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 
 import geopandas as gpd

@@ -1,11 +1,11 @@
 import argparse
 import json
 import logging
-from math import isfinite
 import re
 import unicodedata
 from collections.abc import Sequence
 from datetime import datetime
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
