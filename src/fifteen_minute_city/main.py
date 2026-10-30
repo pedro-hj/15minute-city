@@ -5,7 +5,6 @@ import re
 import unicodedata
 from collections.abc import Sequence
 from datetime import datetime
-from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -113,19 +112,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Persist the execution using DATABASE_URL",
     )
-    parser.add_argument(
-        "--simulate-services",
-        type=Path,
-        metavar="GEOJSON",
-        help="Compare existing services with hypothetical Point features from GeoJSON",
-    )
-    parser.add_argument(
-        "--max-snap-distance-m",
-        type=float,
-        default=250.0,
-        help="Maximum distance to a walking graph node for hypothetical services (default: 250 m)",
-    )
-
     parser.add_argument("--verbose", action="store_true")
 
     return parser
@@ -164,65 +150,9 @@ def format_output(
     }
 
 
-def format_simulation_output(
-    baseline: AnalysisOutcome,
-    simulated: AnalysisOutcome,
-    *,
-    locale: dict[str, str],
-    output_mode: str,
-    services: list[dict],
-    scenario_path: Path,
-) -> dict[str, Any]:
-    """Report the original and hypothetical city scores in percentage points."""
-    if baseline.population_report is None or simulated.population_report is None:
-        raise ValueError("A population grid is required to compare scenarios")
-
-    def difference(after, before) -> dict[str, Any]:
-        return {
-            "category_coverage": {
-                code: round(
-                    after.categories[code].coverage_percentage
-                    - before.categories[code].coverage_percentage,
-                    6,
-                )
-                for code in before.categories
-            },
-            "overall_coverage": round(
-                after.overall_coverage_percentage - before.overall_coverage_percentage,
-                6,
-            ),
-        }
-
-    return {
-        "mode": "hypothetical_services",
-        "location": locale,
-        "scenario_file": str(scenario_path),
-        "added_services": services,
-        "data_sources": {
-            "pbf_checksum": baseline.population_report.metadata.get("pbf_checksum"),
-            "population_source": baseline.population_report.metadata.get(
-                "population_source"
-            ),
-        },
-        "baseline": format_output(baseline, locale=locale, output_mode=output_mode),
-        "simulated": format_output(simulated, locale=locale, output_mode=output_mode),
-        "delta": {
-            "unit": "percentage_points",
-            "population": difference(
-                simulated.population_report, baseline.population_report
-            ),
-            "nodes": difference(simulated.node_report, baseline.node_report),
-        },
-    }
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.simulate_services is not None and args.enable_db:
-        parser.error("--simulate-services cannot be combined with --enable-db")
-    if not isfinite(args.max_snap_distance_m) or args.max_snap_distance_m <= 0:
-        parser.error("--max-snap-distance-m must be a finite positive value")
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(levelname)s %(name)s: %(message)s",
@@ -248,31 +178,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         population_column=args.population_column,
         id_column=args.population_id_column,
     )
-    if args.simulate_services is not None:
-        baseline, simulated, services = region.simulate_services(
-            args.simulate_services,
-            max_snap_distance_m=args.max_snap_distance_m,
-        )
-        result = format_simulation_output(
-            baseline,
-            simulated,
-            locale=locale,
-            output_mode=args.output_mode,
-            services=services,
-            scenario_path=args.simulate_services,
-        )
-    else:
-        outcome = region.calculate_accessibility()
-        result = format_output(outcome, locale=locale, output_mode=args.output_mode)
+    outcome = region.calculate_accessibility()
+    result = format_output(outcome, locale=locale, output_mode=args.output_mode)
     json_data = json.dumps(result, ensure_ascii=False, indent=2)
 
     try:
         output_path = resolve_output_path(
-            (
-                args.output
-                if args.output is not None or args.simulate_services is None
-                else Path("data/output/scenarios")
-            ),
+            args.output,
             city=args.city,
             state=args.state,
             country=args.country,

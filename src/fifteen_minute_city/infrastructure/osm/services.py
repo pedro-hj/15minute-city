@@ -3,7 +3,6 @@ from __future__ import annotations
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from math import isfinite
 from pathlib import Path
 
 import geopandas as gpd
@@ -86,17 +85,9 @@ def categorize_services(
 def snap_services_to_graph(
     graph: nx.MultiDiGraph,
     categorized_services: dict[str, list[tuple[str | None, BaseGeometry]]],
-    *,
-    max_distance_m: float | None = None,
 ) -> ServiceLoadResult:
     """Associate every categorized service with its nearest walking-graph node."""
-    if max_distance_m is not None and (
-        not isfinite(max_distance_m) or max_distance_m <= 0
-    ):
-        raise ValueError("max_distance_m must be finite and positive")
     graph_crs = graph.graph.get("crs")
-    if max_distance_m is not None and graph_crs is None:
-        raise ValueError("A graph CRS is required to validate distances in metres")
     if graph_crs is not None:
         if ox.projection.is_projected(graph_crs):
             projected_graph = graph
@@ -138,15 +129,7 @@ def snap_services_to_graph(
             coordinates = np.asarray(
                 [(geometry.x, geometry.y) for geometry in geometries]
             )
-        distances, indices = tree.query(coordinates, k=1)
-        if max_distance_m is not None:
-            for (name, _geometry), distance in zip(services, distances, strict=True):
-                if distance > max_distance_m:
-                    raise ValueError(
-                        f"Hypothetical service {name or '<unnamed>'!r} in "
-                        f"{category!r} is {distance:.1f} m from the walking "
-                        f"network (limit: {max_distance_m:g} m)"
-                    )
+        _distances, indices = tree.query(coordinates, k=1)
 
         located = [
             LocatedService(

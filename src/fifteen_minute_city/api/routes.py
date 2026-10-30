@@ -1,6 +1,9 @@
+import os
+from pathlib import Path as FilePath
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from fifteen_minute_city.api import service
@@ -153,6 +156,37 @@ def execution_result(execution_id: int, db: DbSession) -> dict:
     if execution is None:
         raise HTTPException(status_code=404, detail="Completed execution not found")
     return service.build_detailed_result(db, execution)
+
+
+@router.get(
+    "/executions/{execution_id}/simulation-package",
+    response_class=FileResponse,
+    tags=["simulations"],
+)
+def simulation_package(execution_id: int, db: DbSession) -> FileResponse:
+    """Return a pre-generated portable bundle; never build graphs on API requests."""
+    execution = service.get_completed_execution(db, execution_id)
+    if execution is None:
+        raise HTTPException(status_code=404, detail="Completed execution not found")
+    folder = FilePath(
+        os.getenv("SIMULATION_PACKAGE_DIR", "data/simulation-packages")
+    )
+    bundle = folder / f"{execution_id}.fmc.gz"
+    if not bundle.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Simulation package not generated for this execution",
+        )
+    return FileResponse(
+        bundle,
+        media_type="application/octet-stream",
+        filename=f"{execution_id}.fmc",
+        headers={
+            "Content-Encoding": "gzip",
+            "Cache-Control": "private, max-age=3600",
+            "Vary": "X-API-Key",
+        },
+    )
 
 
 @router.get(

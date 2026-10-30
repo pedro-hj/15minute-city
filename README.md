@@ -163,15 +163,14 @@ uv run --no-project --with reportlab==4.4.9 \
   python scripts/generate_api_manual.py
 ```
 
-## Simulação de serviços essenciais (recurso proposto)
+## Simulações locais a partir de análises concluídas
 
-O modo `--simulate-services CAMINHO.geojson` compara os índices da cidade
-antes e depois de adicionar pontos hipotéticos nas categorias `health`,
-`education`, `food` e `culture`. A simulação usa o **mesmo grafo e a
-mesma grade populacional** para os dois cenários, sem alterar o PBF.
+O módulo experimental de simulação distribui um pacote compacto `FMC1`
+por execução, gerado uma vez a partir do GraphML do cache e dos resultados
+persistidos no PostgreSQL. O Dijkstra incremental roda **no dispositivo do
+cliente** (navegador, Node.js ou futuros ambientes compatíveis); a API
+apenas entrega os dados, sem executar simulações ou alterar análises reais.
 
-O resultado JSON contém os indicadores originais, os simulados e sua diferença
-em pontos percentuais. Como os estabelecimentos não são reais, simulações
-**não podem ser combinadas** com `--enable-db`.
-
-Veja [o guia de cenários e testes na VPS](docs/SIMULATIONS.md).
+Requer a migração para pesos populacionais por nó e uma execução concluída
+que já disponha desses pesos. Ver [formato, exportação, API e exemplos de
+uso](docs/SIMULATIONS.md).

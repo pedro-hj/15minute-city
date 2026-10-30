@@ -52,6 +52,11 @@ class Node(Base):
         nullable=False,
         comment="Geographic point coordinates of the node (EPSG:4326)",
     )
+    population_weight: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Population represented by this walking node in the execution",
+    )
     overall_index: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
@@ -101,6 +106,7 @@ class Node(Base):
             "lat": self.lat,
             "lon": self.lon,
             "geom": self.geojson,
+            "population_weight": self.population_weight,
             "overall_index": self.overall_index,
             "overall_mean_time": self.overall_mean_time,
         }

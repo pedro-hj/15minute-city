@@ -1,12 +1,16 @@
+from collections import defaultdict
 from dataclasses import dataclass
+from math import isclose
 from typing import Any
 
 import geopandas as gpd
 import networkx as nx
+from sqlalchemy import update
 
 from fifteen_minute_city.application.analysis_runner import AnalysisOutcome
 from fifteen_minute_city.db.connection import session_scope
 from fifteen_minute_city.db.models.city import City
+from fifteen_minute_city.db.models.node import Node
 from fifteen_minute_city.db.models.service import Service
 from fifteen_minute_city.db.services.category_service import (
     list_categories,
@@ -237,6 +241,32 @@ class AlgorithmPipeline:
             reports.append(outcome.population_report)
 
         with session_scope() as db:
+            if outcome.population_report is not None:
+                if not graph_node_to_db_id:
+                    raise ValueError("Population persistence requires a node ID mapping")
+                first_category = next(iter(outcome.population_report.categories.values()))
+                if not first_category.details:
+                    raise ValueError("Population detail records are missing")
+                accumulated = defaultdict(float)
+                for detail in first_category.details:
+                    database_id = graph_node_to_db_id.get(detail.node_id)
+                    if database_id is None:
+                        raise ValueError("Population origin references an unsaved graph node")
+                    accumulated[database_id] += detail.weight
+                if not isclose(
+                    sum(accumulated.values()),
+                    outcome.population_report.total_weight,
+                    rel_tol=1e-8,
+                    abs_tol=1e-5,
+                ):
+                    raise ValueError("Aggregated population does not match the analysis")
+                records = [
+                    {"id": database_id, "population_weight": weight}
+                    for database_id, weight in accumulated.items()
+                ]
+                for start in range(0, len(records), 5_000):
+                    db.execute(update(Node), records[start : start + 5_000])
+
             categories = list_categories(db)
             category_id_map = {category.code: category.id for category in categories}
             for report in reports:
