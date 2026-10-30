@@ -230,9 +230,11 @@ def export_completed_execution(
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{execution_id}.fmc.gz"
     temporary_path = output_dir / f".{execution_id}.fmc.gz.tmp"
-    with temporary_path.open("wb") as destination:
-        with gzip.GzipFile(fileobj=destination, mode="wb", mtime=0) as zipped:
-            zipped.write(bundle)
+    with (
+        temporary_path.open("wb") as destination,
+        gzip.GzipFile(fileobj=destination, mode="wb", mtime=0) as zipped,
+    ):
+        zipped.write(bundle)
     temporary_path.replace(path)
     return path
 
