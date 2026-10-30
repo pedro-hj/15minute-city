@@ -12,6 +12,7 @@ from fifteen_minute_city.application.analysis_runner import (
     AccessibilityAnalysisRunner,
     AnalysisOutcome,
 )
+from fifteen_minute_city.application.scenario_services import load_service_scenario
 from fifteen_minute_city.config import AnalysisSettings
 from fifteen_minute_city.constants import ANALYSIS_VERSION, SERVICE_CATEGORIES
 from fifteen_minute_city.core.modules.exceptions import ServiceNotSupportedError
@@ -22,7 +23,10 @@ from fifteen_minute_city.infrastructure.osm.graph import (
     OSMGraphArtifact,
     load_or_build_osm_graph,
 )
-from fifteen_minute_city.infrastructure.osm.services import load_services_from_pbf
+from fifteen_minute_city.infrastructure.osm.services import (
+    load_services_from_pbf,
+    snap_services_to_graph,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +299,71 @@ class Region:
                 raise
 
         return outcome
+
+    def simulate_services(
+        self,
+        scenario_path: str | Path,
+        *,
+        max_snap_distance_m: float = 250.0,
+    ) -> tuple[AnalysisOutcome, AnalysisOutcome, list[dict]]:
+        """Compare real services with a hypothetical scenario on the same graph.
+
+        No OSM file or existing service collection is changed. Simulations must
+        not write into the official analysis database.
+        """
+        if self.pipeline is not None:
+            raise ValueError("Hypothetical simulations must not be persisted to the database")
+        if self.__graph is None or self._boundary is None:
+            raise RuntimeError("build_graph() must be called before simulating services")
+        if self._population_origins is None:
+            raise RuntimeError("load_population_grid() must be called before simulation")
+        if not self.__services:
+            raise RuntimeError("locate_services() must be called before simulation")
+
+        points = load_service_scenario(
+            scenario_path,
+            boundary=self._boundary,
+            categories=set(self._service_categories),
+        )
+        categorized = {category: [] for category in self._service_categories}
+        for service in points:
+            categorized[service.category].append((service.name, service.point))
+        extra = snap_services_to_graph(
+            self.__graph,
+            categorized,
+            max_distance_m=max_snap_distance_m,
+        )
+
+        baseline = self.calculate_accessibility()
+        augmented = {
+            category: [*existing, *extra.nodes_by_category[category]]
+            for category, existing in self.__services.items()
+        }
+        runner = AccessibilityAnalysisRunner(threshold_minutes=self.threshold_minutes)
+        simulated = runner.run(
+            self.__graph,
+            augmented,
+            population_origins=self._population_origins,
+            metadata={
+                "analysis_version": ANALYSIS_VERSION,
+                "scenario": "hypothetical_services",
+                "pbf_checksum": (
+                    self._graph_artifact.pbf_checksum if self._graph_artifact else None
+                ),
+                "population_source": self._population_origins.source,
+            },
+        )
+        placed = [
+            {
+                "name": service.name,
+                "category": category,
+                "coordinates": [service.geometry.x, service.geometry.y],
+                "graph_node_id": service.graph_node_id,
+            }
+            for category in self._service_categories
+            for service in extra.services_by_category[category]
+        ]
+        return baseline, simulated, placed
 
     def calculate_times(self, algorithm: str = "dijkstra") -> dict:
         if algorithm != "dijkstra":

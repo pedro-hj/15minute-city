@@ -162,3 +162,16 @@ Para gerar a versão PDF localmente:
 uv run --no-project --with reportlab==4.4.9 \
   python scripts/generate_api_manual.py
 ```
+
+## Simulação de serviços essenciais (recurso proposto)
+
+O modo `--simulate-services CAMINHO.geojson` compara os índices da cidade
+antes e depois de adicionar pontos hipotéticos nas categorias `health`,
+`education`, `food` e `culture`. A simulação usa o **mesmo grafo e a
+mesma grade populacional** para os dois cenários, sem alterar o PBF.
+
+O resultado JSON contém os indicadores originais, os simulados e sua diferença
+em pontos percentuais. Como os estabelecimentos não são reais, simulações
+**não podem ser combinadas** com `--enable-db`.
+
+Veja [o guia de cenários e testes na VPS](docs/SIMULATIONS.md).
