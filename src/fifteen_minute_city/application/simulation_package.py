@@ -128,11 +128,13 @@ def build_package(
         "distance_unit": "seconds",
         "coordinate_system": "EPSG:4326",
     }
-    meta_bytes = json.dumps(
-        metadata, separators=(",", ":"), sort_keys=True
-    ).encode("utf-8")
+    meta_bytes = json.dumps(metadata, separators=(",", ":"), sort_keys=True).encode(
+        "utf-8"
+    )
     result = io.BytesIO()
-    result.write(HEADER.pack(MAGIC, len(meta_bytes), count, edge_count, len(categories)))
+    result.write(
+        HEADER.pack(MAGIC, len(meta_bytes), count, edge_count, len(categories))
+    )
     result.write(meta_bytes)
     result.write(b"\0" * (-result.tell() % 8))
     for values in (coordinates, population, baseline, offsets, targets, durations):
@@ -163,18 +165,23 @@ def export_completed_execution(
     graph_file = graph_dir / "graph.graphml"
     cache_metadata_file = graph_dir / "metadata.json"
     if not graph_file.is_file() or not cache_metadata_file.is_file():
-        raise FileNotFoundError("Versioned GraphML cache is unavailable for this execution")
+        raise FileNotFoundError(
+            "Versioned GraphML cache is unavailable for this execution"
+        )
     cache_meta = json.loads(cache_metadata_file.read_text(encoding="utf-8"))
-    if cache_meta.get("pbf_checksum") != checksum or cache_meta.get("network_type") != execution.network_type:
+    if (
+        cache_meta.get("pbf_checksum") != checksum
+        or cache_meta.get("network_type") != execution.network_type
+    ):
         raise ValueError("Cached graph does not match the stored execution")
 
     graph = ox.load_graphml(graph_file)
     node_rows = db.execute(
-        select(Node.osm_id, Node.population_weight).where(Node.execution_id == execution_id)
+        select(Node.osm_id, Node.population_weight).where(
+            Node.execution_id == execution_id
+        )
     ).all()
-    weights = {
-        int(osm_id): float(weight or 0.0) for osm_id, weight in node_rows
-    }
+    weights = {int(osm_id): float(weight or 0.0) for osm_id, weight in node_rows}
     if not node_rows or not any(weight is not None for _, weight in node_rows):
         raise ValueError(
             "This execution predates population-weight persistence; rerun its analysis"
@@ -192,15 +199,19 @@ def export_completed_execution(
     ):
         raise ValueError("Population totals do not match the saved analysis")
 
-    categories = db.execute(
-        select(ServiceCategory.code)
-        .join(CityIndex, CityIndex.category_id == ServiceCategory.id)
-        .where(
-            CityIndex.execution_id == execution_id,
-            CityIndex.origin_strategy == "network_nodes",
+    categories = (
+        db.execute(
+            select(ServiceCategory.code)
+            .join(CityIndex, CityIndex.category_id == ServiceCategory.id)
+            .where(
+                CityIndex.execution_id == execution_id,
+                CityIndex.origin_strategy == "network_nodes",
+            )
+            .order_by(ServiceCategory.code)
         )
-        .order_by(ServiceCategory.code)
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not categories:
         raise ValueError("There are no persisted categories for this execution")
     times = {}

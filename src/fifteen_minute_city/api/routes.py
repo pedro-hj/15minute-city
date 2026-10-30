@@ -168,9 +168,7 @@ def simulation_package(execution_id: int, db: DbSession) -> FileResponse:
     execution = service.get_completed_execution(db, execution_id)
     if execution is None:
         raise HTTPException(status_code=404, detail="Completed execution not found")
-    folder = FilePath(
-        os.getenv("SIMULATION_PACKAGE_DIR", "data/simulation-packages")
-    )
+    folder = FilePath(os.getenv("SIMULATION_PACKAGE_DIR", "data/simulation-packages"))
     bundle = folder / f"{execution_id}.fmc.gz"
     if not bundle.is_file():
         raise HTTPException(

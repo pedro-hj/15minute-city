@@ -243,15 +243,21 @@ class AlgorithmPipeline:
         with session_scope() as db:
             if outcome.population_report is not None:
                 if not graph_node_to_db_id:
-                    raise ValueError("Population persistence requires a node ID mapping")
-                first_category = next(iter(outcome.population_report.categories.values()))
+                    raise ValueError(
+                        "Population persistence requires a node ID mapping"
+                    )
+                first_category = next(
+                    iter(outcome.population_report.categories.values())
+                )
                 if not first_category.details:
                     raise ValueError("Population detail records are missing")
                 accumulated = defaultdict(float)
                 for detail in first_category.details:
                     database_id = graph_node_to_db_id.get(detail.node_id)
                     if database_id is None:
-                        raise ValueError("Population origin references an unsaved graph node")
+                        raise ValueError(
+                            "Population origin references an unsaved graph node"
+                        )
                     accumulated[database_id] += detail.weight
                 if not isclose(
                     sum(accumulated.values()),
@@ -259,7 +265,9 @@ class AlgorithmPipeline:
                     rel_tol=1e-8,
                     abs_tol=1e-5,
                 ):
-                    raise ValueError("Aggregated population does not match the analysis")
+                    raise ValueError(
+                        "Aggregated population does not match the analysis"
+                    )
                 records = [
                     {"id": database_id, "population_weight": weight}
                     for database_id, weight in accumulated.items()
