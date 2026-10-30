@@ -75,9 +75,7 @@ def test_scenario_accepts_multiple_locations_and_valid_categories(tmp_path):
 def test_scenario_rejects_invalid_features(tmp_path, feature, message):
     path = _scenario(tmp_path, [feature])
     with pytest.raises(ValueError, match=message):
-        load_service_scenario(
-            path, boundary=_boundary(), categories={"health", "food"}
-        )
+        load_service_scenario(path, boundary=_boundary(), categories={"health", "food"})
 
 
 def test_scenario_needs_nonempty_feature_collection(tmp_path):
@@ -159,10 +157,14 @@ def test_scenario_reuses_graph_but_does_not_modify_original_services(tmp_path):
 
 def test_simulation_cannot_write_into_official_database(tmp_path):
     args = [
-        "--city", "Test",
-        "--pbf", "nonexistent.pbf",
-        "--population-grid", "nonexistent.zip",
-        "--simulate-services", "example.geojson",
+        "--city",
+        "Test",
+        "--pbf",
+        "nonexistent.pbf",
+        "--population-grid",
+        "nonexistent.zip",
+        "--simulate-services",
+        "example.geojson",
         "--enable-db",
     ]
     with pytest.raises(SystemExit) as error:
@@ -173,11 +175,16 @@ def test_simulation_cannot_write_into_official_database(tmp_path):
 def test_cli_exposes_hypothetical_service_options():
     args = build_parser().parse_args(
         [
-            "--city", "Test",
-            "--pbf", "source.osm.pbf",
-            "--population-grid", "grade.zip",
-            "--simulate-services", "example.geojson",
-            "--max-snap-distance-m", "400",
+            "--city",
+            "Test",
+            "--pbf",
+            "source.osm.pbf",
+            "--population-grid",
+            "grade.zip",
+            "--simulate-services",
+            "example.geojson",
+            "--max-snap-distance-m",
+            "400",
         ]
     )
     assert str(args.simulate_services) == "example.geojson"

@@ -188,8 +188,7 @@ def format_simulation_output(
                 for code in before.categories
             },
             "overall_coverage": round(
-                after.overall_coverage_percentage
-                - before.overall_coverage_percentage,
+                after.overall_coverage_percentage - before.overall_coverage_percentage,
                 6,
             ),
         }

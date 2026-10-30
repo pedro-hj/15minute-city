@@ -41,9 +41,14 @@ def load_service_scenario(
     if not isinstance(content, dict) or content.get("type") != "FeatureCollection":
         raise ValueError("Scenario must be a GeoJSON FeatureCollection")
     if content.get("crs") is not None:
-        raise ValueError("Scenario must use GeoJSON WGS84 coordinates without a CRS override")
+        raise ValueError(
+            "Scenario must use GeoJSON WGS84 coordinates without a CRS override"
+        )
     features = content.get("features")
-    if not isinstance(features, list) or not 1 <= len(features) <= MAX_SCENARIO_SERVICES:
+    if (
+        not isinstance(features, list)
+        or not 1 <= len(features) <= MAX_SCENARIO_SERVICES
+    ):
         raise ValueError("Scenario must contain 1 to 200 Point features")
     if boundary.empty or boundary.crs is None:
         raise ValueError("Municipality boundary is missing or has no CRS")
@@ -66,7 +71,9 @@ def load_service_scenario(
         if name is not None and (
             not isinstance(name, str) or not 1 <= len(name.strip()) <= 120
         ):
-            raise ValueError(f"Feature {index} name must be a nonempty string of at most 120 characters")
+            raise ValueError(
+                f"Feature {index} name must be a nonempty string of at most 120 characters"
+            )
         if location.get("type") != "Point":
             raise ValueError(f"Feature {index} must use Point geometry")
         coordinates = location.get("coordinates")

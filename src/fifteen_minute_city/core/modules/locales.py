@@ -312,11 +312,17 @@ class Region:
         not write into the official analysis database.
         """
         if self.pipeline is not None:
-            raise ValueError("Hypothetical simulations must not be persisted to the database")
+            raise ValueError(
+                "Hypothetical simulations must not be persisted to the database"
+            )
         if self.__graph is None or self._boundary is None:
-            raise RuntimeError("build_graph() must be called before simulating services")
+            raise RuntimeError(
+                "build_graph() must be called before simulating services"
+            )
         if self._population_origins is None:
-            raise RuntimeError("load_population_grid() must be called before simulation")
+            raise RuntimeError(
+                "load_population_grid() must be called before simulation"
+            )
         if not self.__services:
             raise RuntimeError("locate_services() must be called before simulation")
 
