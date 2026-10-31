@@ -52,13 +52,20 @@ def test_server_matches_reference_javascript_health_scenario():
     bundle = sample_bundle()
     baseline_before = bundle.baseline.copy()
     result = simulate(
-        bundle, [{"category": "health", "name": "UBS", "latitude": 0, "longitude": 0.01}]
+        bundle,
+        [{"category": "health", "name": "UBS", "latitude": 0, "longitude": 0.01}],
     )
     assert result["execution_id"] == 7
     assert result["baseline"]["population"]["overall_coverage_percentage"] == 0
     assert result["simulated"]["population"]["overall_coverage_percentage"] == 50
-    assert result["simulated"]["population"]["categories"]["health"]["coverage_percentage"] == 100
-    assert result["simulated"]["population"]["categories"]["health"]["mean_travel_time_minutes"] == 0
+    assert (
+        result["simulated"]["population"]["categories"]["health"]["coverage_percentage"]
+        == 100
+    )
+    assert (
+        result["simulated"]["population"]["categories"]["health"]["mean_travel_time_minutes"]
+        == 0
+    )
     assert result["delta"]["population"]["overall_coverage"] == 50
     assert result["delta"]["population"]["category_coverage"]["food"] == 0
     assert result["added_services"][0]["snap_distance_m"] == 0
@@ -75,7 +82,9 @@ def test_multiple_categories_update_overall_intersection():
         ],
     )
     assert result["simulated"]["population"]["overall_coverage_percentage"] == 100
-    assert result["simulated"]["nodes"]["overall_coverage_percentage"] == pytest.approx(200 / 3)
+    assert result["simulated"]["nodes"]["overall_coverage_percentage"] == pytest.approx(
+        200 / 3
+    )
 
 
 def test_reject_unknown_categories_and_far_away_points():
