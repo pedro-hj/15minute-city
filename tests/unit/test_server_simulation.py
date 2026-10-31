@@ -14,7 +14,6 @@ from fifteen_minute_city.application.server_simulation import (
     InvalidSimulationPackage,
     InvalidSimulationRequest,
     decode_package,
-    load_execution_package,
     simulate,
 )
 from fifteen_minute_city.application.simulation_package import build_package
