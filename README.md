@@ -163,14 +163,19 @@ uv run --no-project --with reportlab==4.4.9 \
   python scripts/generate_api_manual.py
 ```
 
-## Simulações locais a partir de análises concluídas
+## Simulações no servidor
 
-O módulo experimental de simulação distribui um pacote compacto `FMC1`
-por execução, gerado uma vez a partir do GraphML do cache e dos resultados
-persistidos no PostgreSQL. O Dijkstra incremental roda **no dispositivo do
-cliente** (navegador, Node.js ou futuros ambientes compatíveis); a API
-apenas entrega os dados, sem executar simulações ou alterar análises reais.
+A API de homologação aceita `POST /api/v1/executions/{execution_id}/simulate`
+com um ou mais serviços hipotéticos (`category`, `latitude`, `longitude`
+e `name` opcional). A VPS executa Dijkstra incremental e devolve em JSON
+os indicadores originais, simulados, diferenças de cobertura e tempo de cálculo.
 
-Requer a migração para pesos populacionais por nó e uma execução concluída
-que já disponha desses pesos. Ver [formato, exportação, API e exemplos de
-uso](docs/SIMULATIONS.md).
+O PostgreSQL mantém os resultados da análise real, enquanto o arquivo
+interno `FMC1`, gerado uma vez por execução, permite carregar tempos,
+população e grafo em cache na API. Nenhuma alteração é feita nos dados
+originais durante uma simulação; o cliente **não precisa baixar FMC1**
+nem executar JavaScript ou Node.js.
+
+Requer a migração `c15fbc26e001`, uma análise realizada com `--enable-db`
+e a preparação do pacote pelo administrador. Ver
+[comando de exportação, formato, API, autenticação e exemplos](docs/SIMULATIONS.md).
