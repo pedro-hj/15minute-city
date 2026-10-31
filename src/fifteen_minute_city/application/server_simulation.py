@@ -146,7 +146,9 @@ def load_execution_package(folder: Path, execution_id: int) -> SimulationBundle:
     return bundle
 
 
-def _nearest(bundle: SimulationBundle, longitude: float, latitude: float) -> tuple[int, float]:
+def _nearest(
+    bundle: SimulationBundle, longitude: float, latitude: float
+) -> tuple[int, float]:
     coords = bundle.coordinates
     dx = (longitude - coords[:, 0]) * RAD * np.cos(
         (latitude + coords[:, 1]) * RAD / 2
@@ -187,11 +189,15 @@ def _weighted_median_minutes(times: np.ndarray, weights: np.ndarray) -> float | 
     order = np.argsort(values, kind="stable")
     cumulative = np.cumsum(counts[order])
     halfway = float(counts.sum()) / 2
-    position = min(int(np.searchsorted(cumulative, halfway, side="left")), len(order) - 1)
+    position = min(
+        int(np.searchsorted(cumulative, halfway, side="left")), len(order) - 1
+    )
     return float(values[order[position]] / 60)
 
 
-def _metrics(bundle: SimulationBundle, updates: dict[int, np.ndarray], *, weighted: bool) -> dict:
+def _metrics(
+    bundle: SimulationBundle, updates: dict[int, np.ndarray], *, weighted: bool
+) -> dict:
     weights = bundle.population if weighted else np.ones(bundle.node_count)
     total = float(weights.sum())
     if total <= 0:
@@ -212,7 +218,10 @@ def _metrics(bundle: SimulationBundle, updates: dict[int, np.ndarray], *, weight
             "coverage_percentage": 100 * float(weights[within].sum()) / total,
             "unreachable_percentage": 100 * (total - reachable_weight) / total,
             "mean_travel_time_minutes": (
-                float(np.dot(times[reachable], weights[reachable]) / (reachable_weight * 60))
+                float(
+                    np.dot(times[reachable], weights[reachable])
+                    / (reachable_weight * 60)
+                )
                 if reachable_weight
                 else None
             ),
@@ -263,7 +272,12 @@ def simulate(
         if category not in categories:
             raise InvalidSimulationRequest(f"Category not analyzed: {category}")
         lon, lat = float(service["longitude"]), float(service["latitude"])
-        if not math.isfinite(lon) or not math.isfinite(lat) or abs(lon) > 180 or abs(lat) > 90:
+        if (
+            not math.isfinite(lon)
+            or not math.isfinite(lat)
+            or abs(lon) > 180
+            or abs(lat) > 90
+        ):
             raise InvalidSimulationRequest("Invalid geographic coordinates")
         node, metres = _nearest(bundle, lon, lat)
         if metres > max_snap_distance_m:
@@ -280,7 +294,9 @@ def simulate(
             "snap_distance_m": metres,
         })
 
-    updates = {category: _dijkstra(bundle, nodes) for category, nodes in sources.items()}
+    updates = {
+        category: _dijkstra(bundle, nodes) for category, nodes in sources.items()
+    }
     baseline = bundle.baseline_metrics
     simulated = {
         "population": _metrics(bundle, updates, weighted=True),
