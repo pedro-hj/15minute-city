@@ -15,7 +15,7 @@ MANUAL = Path(__file__).resolve().parents[2] / "docs" / "API.md"
 
 def test_api_manual_documents_every_public_endpoint() -> None:
     text = MANUAL.read_text(encoding="utf-8")
-    documented = set(re.findall(r"^\| `GET (/[^`]+)`", text, flags=re.MULTILINE))
+    documented = set(re.findall(r"^\\| `(GET|POST) (/[^`]+)`", text, flags=re.MULTILINE))
     actual = {
         (method, route.path)
         for route in app.routes
