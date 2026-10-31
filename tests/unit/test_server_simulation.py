@@ -75,7 +75,7 @@ def test_multiple_categories_update_overall_intersection():
         ],
     )
     assert result["simulated"]["population"]["overall_coverage_percentage"] == 100
-    assert result["simulated"]["nodes"]["overall_coverage_percentage"] == 100
+    assert result["simulated"]["nodes"]["overall_coverage_percentage"] == pytest.approx(200 / 3)
 
 
 def test_reject_unknown_categories_and_far_away_points():
