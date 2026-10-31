@@ -15,9 +15,9 @@ from fifteen_minute_city.api.schemas import (
     HistoryResponse,
     MetricHistoryResponse,
     MetricResponse,
-    StrategyReportResponse,
     SimulationRequest,
     SimulationResponse,
+    StrategyReportResponse,
 )
 from fifteen_minute_city.application.server_simulation import (
     InvalidSimulationPackage,
