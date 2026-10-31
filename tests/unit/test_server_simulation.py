@@ -103,7 +103,9 @@ def test_corrupted_binary_is_rejected():
 
 def test_api_routes_server_side_and_removes_package_download(monkeypatch):
     routes_list = [
-        route for route in app.routes if route.path.startswith("/api/v1/executions/")
+        route
+        for route in app.routes
+        if getattr(route, "path", "").startswith("/api/v1/executions/")
     ]
     assert any(
         route.path == "/api/v1/executions/{execution_id}/simulate"
