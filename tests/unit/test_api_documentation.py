@@ -13,14 +13,14 @@ from fifteen_minute_city.api.service import (
 MANUAL = Path(__file__).resolve().parents[2] / "docs" / "API.md"
 
 
-def test_api_manual_documents_every_get_endpoint() -> None:
+def test_api_manual_documents_every_public_endpoint() -> None:
     text = MANUAL.read_text(encoding="utf-8")
     documented = set(re.findall(r"^\| `GET (/[^`]+)`", text, flags=re.MULTILINE))
     actual = {
-        route.path
+        (method, route.path)
         for route in app.routes
-        if "GET" in (getattr(route, "methods", None) or set())
-        and (route.path == "/health" or route.path.startswith("/api/v1/"))
+        for method in {"GET", "POST"} & (getattr(route, "methods", None) or set())
+        if route.path == "/health" or route.path.startswith("/api/v1/")
     }
     assert actual <= documented, (
         f"Missing endpoints in docs/API.md: {sorted(actual - documented)}"
