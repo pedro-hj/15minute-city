@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from fifteen_minute_city.api.app import app
+from fifteen_minute_city.api.routes import router as api_router
 from fifteen_minute_city.api.service import (
     CATEGORY_METRICS,
     OVERALL_METRICS,
@@ -20,7 +21,7 @@ def test_api_manual_documents_every_public_endpoint() -> None:
     )
     actual = {
         (method, route.path)
-        for route in app.routes
+        for route in [*app.routes, *api_router.routes]
         for method in {"GET", "POST"} & (getattr(route, "methods", None) or set())
         if route.path == "/health" or route.path.startswith("/api/v1/")
     }
