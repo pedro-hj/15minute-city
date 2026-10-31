@@ -8,7 +8,6 @@ import pytest
 from fastapi import HTTPException
 
 from fifteen_minute_city.api import routes
-from fifteen_minute_city.api.app import app
 from fifteen_minute_city.api.schemas import SimulationRequest
 from fifteen_minute_city.application.server_simulation import (
     InvalidSimulationPackage,
@@ -104,7 +103,7 @@ def test_corrupted_binary_is_rejected():
 def test_api_routes_server_side_and_removes_package_download(monkeypatch):
     routes_list = [
         route
-        for route in app.routes
+        for route in routes.router.routes
         if getattr(route, "path", "").startswith("/api/v1/executions/")
     ]
     assert any(
