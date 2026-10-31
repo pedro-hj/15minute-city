@@ -97,3 +97,65 @@ class MetricHistoryResponse(BaseModel):
     metric: str
     count: int
     results: list[MetricResponse]
+
+
+class SimulationServiceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    category: str = Field(min_length=1, max_length=100)
+    name: str | None = Field(default=None, max_length=255)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class SimulationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    services: list[SimulationServiceInput] = Field(min_length=1, max_length=200)
+
+
+class SimulationCategoryMetrics(BaseModel):
+    coverage_percentage: float
+    unreachable_percentage: float
+    mean_travel_time_minutes: float | None
+    median_travel_time_minutes: float | None
+
+
+class SimulationStrategyMetrics(BaseModel):
+    categories: dict[str, SimulationCategoryMetrics]
+    overall_coverage_percentage: float
+    overall_unreachable_percentage: float
+
+
+class SimulationReports(BaseModel):
+    population: SimulationStrategyMetrics
+    nodes: SimulationStrategyMetrics
+
+
+class SimulationDeltaMetrics(BaseModel):
+    unit: str
+    category_coverage: dict[str, float]
+    overall_coverage: float
+
+
+class SimulationDeltas(BaseModel):
+    population: SimulationDeltaMetrics
+    nodes: SimulationDeltaMetrics
+
+
+class SimulationPlacedService(BaseModel):
+    category: str
+    name: str | None
+    longitude: float
+    latitude: float
+    graph_node_index: int
+    snap_distance_m: float
+
+
+class SimulationResponse(BaseModel):
+    execution_id: int
+    added_services: list[SimulationPlacedService]
+    baseline: SimulationReports
+    simulated: SimulationReports
+    delta: SimulationDeltas
+    processing_time_ms: float
