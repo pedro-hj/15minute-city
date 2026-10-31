@@ -62,7 +62,9 @@ def test_server_matches_reference_javascript_health_scenario():
         == 100
     )
     assert (
-        result["simulated"]["population"]["categories"]["health"]["mean_travel_time_minutes"]
+        result["simulated"]["population"]["categories"]["health"][
+            "mean_travel_time_minutes"
+        ]
         == 0
     )
     assert result["delta"]["population"]["overall_coverage"] == 50
@@ -101,9 +103,7 @@ def test_corrupted_binary_is_rejected():
 
 def test_api_routes_server_side_and_removes_package_download(monkeypatch):
     routes_list = [
-        route
-        for route in app.routes
-        if route.path.startswith("/api/v1/executions/")
+        route for route in app.routes if route.path.startswith("/api/v1/executions/")
     ]
     assert any(
         route.path == "/api/v1/executions/{execution_id}/simulate"
