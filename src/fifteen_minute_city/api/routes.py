@@ -3,7 +3,6 @@ from pathlib import Path as FilePath
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from fifteen_minute_city.api import service
@@ -17,6 +16,14 @@ from fifteen_minute_city.api.schemas import (
     MetricHistoryResponse,
     MetricResponse,
     StrategyReportResponse,
+    SimulationRequest,
+    SimulationResponse,
+)
+from fifteen_minute_city.application.server_simulation import (
+    InvalidSimulationPackage,
+    InvalidSimulationRequest,
+    load_execution_package,
+    simulate,
 )
 from fifteen_minute_city.db.connection import get_db
 from fifteen_minute_city.db.models.city import City
@@ -158,33 +165,35 @@ def execution_result(execution_id: int, db: DbSession) -> dict:
     return service.build_detailed_result(db, execution)
 
 
-@router.get(
-    "/executions/{execution_id}/simulation-package",
-    response_class=FileResponse,
+@router.post(
+    "/executions/{execution_id}/simulate",
+    response_model=SimulationResponse,
     tags=["simulations"],
 )
-def simulation_package(execution_id: int, db: DbSession) -> FileResponse:
-    """Return a pre-generated portable bundle; never build graphs on API requests."""
+def simulate_execution(
+    execution_id: int, request: SimulationRequest, db: DbSession
+) -> dict:
+    """Compute a hypothetical scenario on the VPS without changing stored results."""
     execution = service.get_completed_execution(db, execution_id)
     if execution is None:
         raise HTTPException(status_code=404, detail="Completed execution not found")
     folder = FilePath(os.getenv("SIMULATION_PACKAGE_DIR", "data/simulation-packages"))
-    bundle = folder / f"{execution_id}.fmc.gz"
-    if not bundle.is_file():
+    try:
+        bundle = load_execution_package(folder, execution_id)
+    except FileNotFoundError as exc:
         raise HTTPException(
             status_code=404,
-            detail="Simulation package not generated for this execution",
-        )
-    return FileResponse(
-        bundle,
-        media_type="application/octet-stream",
-        filename=f"{execution_id}.fmc",
-        headers={
-            "Content-Encoding": "gzip",
-            "Cache-Control": "private, max-age=3600",
-            "Vary": "X-API-Key",
-        },
-    )
+            detail="Simulation data not prepared for this execution",
+        ) from exc
+    except (InvalidSimulationPackage, OSError, EOFError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Simulation data is unavailable or invalid",
+        ) from exc
+    try:
+        return simulate(bundle, [item.model_dump() for item in request.services])
+    except InvalidSimulationRequest as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get(
