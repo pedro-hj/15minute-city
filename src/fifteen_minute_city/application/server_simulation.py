@@ -150,9 +150,7 @@ def _nearest(
     bundle: SimulationBundle, longitude: float, latitude: float
 ) -> tuple[int, float]:
     coords = bundle.coordinates
-    dx = (longitude - coords[:, 0]) * RAD * np.cos(
-        (latitude + coords[:, 1]) * RAD / 2
-    )
+    dx = (longitude - coords[:, 0]) * RAD * np.cos((latitude + coords[:, 1]) * RAD / 2)
     dy = (latitude - coords[:, 1]) * RAD
     distances = EARTH_RADIUS_M * np.hypot(dx, dy)
     index = int(np.argmin(distances))
@@ -285,14 +283,16 @@ def simulate(
                 f"Service too far from walking network: {metres:.1f} m"
             )
         sources.setdefault(categories.index(category), set()).add(node)
-        placed.append({
-            "name": service.get("name"),
-            "category": category,
-            "longitude": lon,
-            "latitude": lat,
-            "graph_node_index": node,
-            "snap_distance_m": metres,
-        })
+        placed.append(
+            {
+                "name": service.get("name"),
+                "category": category,
+                "longitude": lon,
+                "latitude": lat,
+                "graph_node_index": node,
+                "snap_distance_m": metres,
+            }
+        )
 
     updates = {
         category: _dijkstra(bundle, nodes) for category, nodes in sources.items()
