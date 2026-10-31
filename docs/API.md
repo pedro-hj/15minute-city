@@ -2,7 +2,7 @@
 
 ## 1. Catálogo completo de endpoints
 
-Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são substituídos por valores reais.
+As rotas de consulta utilizam `GET`; simulações utilizam `POST`. Os parâmetros entre chaves são substituídos por valores reais.
 
 | Método e caminho | Finalidade |
 | --- | --- |
@@ -13,6 +13,7 @@ Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são 
 | `GET /api/v1/categories` | Lista as categorias registradas. |
 | `GET /api/v1/cities/{city_id}/executions` | Lista execuções concluídas do município. |
 | `GET /api/v1/executions/{execution_id}` | Retorna um resultado detalhado por execução concluída. |
+| `POST /api/v1/executions/{execution_id}/simulate` | Adiciona serviços hipotéticos e retorna os indicadores recalculados pela VPS, sem modificar a análise original. |
 | `GET /api/v1/cities/{city_id}/latest` | Retorna o resultado detalhado da execução concluída mais recente. |
 | `GET /api/v1/cities/{city_id}/latest/{strategy}` | Retorna o relatório completo de uma estratégia. |
 | `GET /api/v1/cities/{city_id}/latest/{strategy}/{metric}` | Consulta uma métrica geral da última execução. |
@@ -125,15 +126,47 @@ GET /api/v1/cities/1/history/population/culture/coverage_percentage?limit=20&off
 
 A resposta contém dados de identificação do município, estratégia, categoria, métrica, `count` e um vetor `results`, com cada observação associada a um `execution_id` e `processed_at`. Um histórico vazio retorna `results: []` e `count: 0` se o município existir.
 
+**Simulações no servidor:**
+
+```http
+POST /api/v1/executions/12/simulate
+X-API-Key: SUA_CHAVE
+Content-Type: application/json
+
+{
+  "services": [
+    {
+      "category": "culture",
+      "name": "Novo equipamento cultural",
+      "latitude": -24.031453,
+      "longitude": -46.491341
+    }
+  ]
+}
+```
+
+A resposta apresenta `execution_id`, `added_services`, `baseline`, `simulated`,
+`delta` e `processing_time_ms`. Os objetos `baseline` e `simulated` contêm
+`population` e `nodes`, com cobertura geral e métricas das categorias; os
+`delta` expressam **pontos percentuais**, não variação relativa. São aceitos
+de 1 a 200 estabelecimentos por requisição, em `health`, `education`, `food`
+e `culture`, desde que essas categorias façam parte da execução. As
+coordenadas são enviadas em campos separados de latitude e longitude, em
+graus decimais. Cada ponto deve estar a até 250 metros de algum nó caminhável.
+Os dados de simulação são preparados previamente pelo administrador; a API
+carrega o FMC1 em memória (cache de até dois pacotes por processo) e calcula
+os novos tempos na VPS sem alterar o PostgreSQL. Não existe endpoint público
+para baixar o arquivo FMC1.
+
 ## 4. Códigos de resposta e erros comuns
 
 | HTTP | Situação | Ação recomendada |
 | --- | --- | --- |
 | `200` | Consulta bem-sucedida. | Ler o JSON; listas vazias são possíveis. |
 | `401` | Chave ausente ou inválida em `/api/v1/`. | Conferir `X-API-Key` sem divulgar a chave. |
-| `404` | Município, execução, categoria, estratégia ou métrica indisponível. | Consultar IDs, códigos e execuções concluídas. |
+| `404` | Município, execução, categoria, estratégia, métrica ou pacote de simulação indisponível. | Consultar IDs, códigos e execuções concluídas; preparar o pacote FMC1, se necessário. |
 | `422` | Parâmetro inválido, como `limit=0` ou ID não numérico. | Corrigir tipos e limites informados. |
-| `503` | Nenhuma chave de API configurada no servidor. | Administrador deve configurar `API_KEYS`. |
+| `503` | Autenticação não configurada ou pacote de simulação corrompido/indisponível. | Conferir `API_KEYS` e integridade do FMC1. |
 | `500` | Falha inesperada, incluindo possíveis problemas de banco. | Consultar logs do serviço e saúde do banco. |
 
 **Atenção:** a rota `/health` confirma que o servidor HTTP responde, mas **não verifica a conectividade com o banco de dados**. Uma consulta às cidades autenticada é um teste mais abrangente.
