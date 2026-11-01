@@ -2,6 +2,7 @@
 
 O fluxo é: **arquivo de origem + mapeamento dos campos → arquivo padronizado**.
 O código não depende de Brasil, França, instituto estatístico ou perfil.
+Ele não consulta municípios nem usa a rede viária.
 Você informa quais campos representam o identificador, a localização e a
 quantidade de habitantes. O normalizador não adivinha colunas nem cria IDs.
 
@@ -53,7 +54,7 @@ uv run fifteen-minute-city-normalize-population \
 
 # Exemplo INSEE: idcar_200m, geometria do GeoPackage e ind.
 uv run fifteen-minute-city-normalize-population \
-  --input data/input/franca/grade.gpkg \
+  --input data/input/franca/france_metro/carreaux_200m_met.shp \
   --id-column idcar_200m \
   --location-column geometry \
   --population-column ind \
@@ -95,7 +96,11 @@ uv run fifteen-minute-city \
 ```
 
 A CLI principal lê a geometria do arquivo, recorta pelo município e associa as
-células aos nós da rede. O normalizador preserva os polígonos para essa etapa.
+células aos nós da rede. O normalizador converte a geometria para WGS84
+(EPSG:4326) sem alterar a localização ou a quantidade de habitantes. A CLI
+principal reprojeta os pontos para um CRS em metros ao associá-los à rede
+caminhável; os tempos de percurso são calculados no grafo.
+O normalizador preserva os polígonos para essa etapa.
 
 ## CSV com localização
 
@@ -119,15 +124,18 @@ vírgula como separador. IDs textuais, incluindo zeros à esquerda, são preserv
 
 ## Opções adicionais
 
-- `--city "Lyon" --country "France"`: recorte opcional pelo limite municipal
-  obtido com OSMnx; requer internet. `--state` pode ajudar a identificar a cidade.
-- `--boundary limite.geojson`: recorte por um arquivo local, em lugar de `--city`.
 - `--input-crs EPSG:XXXX`: também permite declarar o sistema de um arquivo
   vetorial sem CRS; não substitui um CRS conhecido por outro incompatível.
 - `--overwrite`: permite substituir uma saída existente.
 
-No recorte, o ponto representativo da célula deve estar dentro do limite.
-Não se divide a população de células que cruzam a fronteira municipal.
+Uma grade nacional extensa (como a da França Metropolitana) pode demandar
+memória e espaço significativos durante a normalização. Para arquivos vetoriais
+o leitor carrega somente os campos de ID e população, além da geometria.
+
+O normalizador não faz recorte municipal. A CLI principal seleciona as células
+do município solicitado pelo ponto representativo da geometria, sem repartir a
+população das quadrículas que atravessam o limite. Assim a mesma grade
+normalizada pode ser utilizada para analisar várias cidades.
 
 A universalidade está no mapeamento e no contrato de saída. Os leitores atuais
 aceitam os formatos acima; GeoTIFF, NetCDF e tabelas sem localização não são

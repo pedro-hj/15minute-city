@@ -15,7 +15,6 @@ from zipfile import ZipFile
 
 import geopandas as gpd
 import numpy as np
-import osmnx as ox
 import pandas as pd
 import pyogrio
 from shapely.errors import GEOSException
@@ -63,39 +62,6 @@ def _source(path: Path, zip_member: str | None) -> tuple[str, str, str | None]:
     return f"zip://{path}!{zip_member}", ext, zip_member
 
 
-def _boundary(
-    *,
-    city: str | None,
-    state: str | None,
-    country: str | None,
-    boundary: str | Path | None,
-) -> tuple[gpd.GeoDataFrame | None, str | None]:
-    if boundary is not None and city is not None:
-        raise ValueError("use either --boundary or --city, not both")
-    if state is not None and city is None:
-        raise ValueError("--state requires --city")
-    if boundary is not None:
-        path = Path(boundary).expanduser().resolve()
-        area = gpd.read_file(path)
-        origin = str(path)
-    elif city is not None:
-        place = {"city": city}
-        if state:
-            place["state"] = state
-        if country:
-            place["country"] = country
-        area = ox.geocode_to_gdf(place)
-        origin = f"geocoded:{city},{state or ''},{country or ''}"
-    else:
-        return None, None
-
-    if area.empty or area.crs is None:
-        raise ValueError("municipality boundary must be non-empty and have a CRS")
-    if not area.geometry.notna().all() or area.geometry.is_empty.any():
-        raise ValueError("municipality boundary contains empty geometries")
-    return area, origin
-
-
 def _read_input(
     path: Path,
     source: str,
@@ -104,10 +70,11 @@ def _read_input(
     *,
     layer: str | None,
     input_crs: str | None,
+    id_column: str,
+    population_column: str,
     location_column: str | None,
     latitude_column: str | None,
     longitude_column: str | None,
-    area: gpd.GeoDataFrame | None,
 ) -> gpd.GeoDataFrame:
     if ext != ".csv":
         if latitude_column is not None or longitude_column is not None:
@@ -130,15 +97,14 @@ def _read_input(
         source_crs = info["crs"]
         if source_crs is None and input_crs is None:
             raise ValueError("input grid lacks a CRS; provide --input-crs")
-        sample = gpd.read_file(source, rows=1, **options)
-        # set_crs checks conflicts instead of silently replacing known coordinates.
-        if input_crs is not None:
-            sample = sample.set_crs(input_crs)
-        if area is not None:
-            projected_area = area.to_crs(sample.crs)
-            options["bbox"] = tuple(projected_area.total_bounds)
+        # Read only the requested indicators, avoiding unnecessary memory use.
+        fields = list(info["fields"])
+        _require_column(fields, id_column, "--id-column")
+        _require_column(fields, population_column, "--population-column")
+        options["columns"] = [id_column, population_column]
         grid = gpd.read_file(source, **options)
         if input_crs is not None:
+            # Reject a conflicting CRS instead of silently changing coordinates.
             grid = grid.set_crs(input_crs)
         return grid
 
@@ -201,10 +167,6 @@ def normalize_population_grid(
     latitude_column: str | None = None,
     longitude_column: str | None = None,
     input_crs: str | None = None,
-    city: str | None = None,
-    state: str | None = None,
-    country: str | None = None,
-    boundary: str | Path | None = None,
     layer: str | None = None,
     zip_member: str | None = None,
     overwrite: bool = False,
@@ -221,9 +183,6 @@ def normalize_population_grid(
         raise FileExistsError(f"output already exists: {output_file}")
 
     source, ext, member = _source(input_file, zip_member)
-    region, boundary_source = _boundary(
-        city=city, state=state, country=country, boundary=boundary
-    )
     grid = _read_input(
         input_file,
         source,
@@ -231,10 +190,11 @@ def normalize_population_grid(
         member,
         layer=layer,
         input_crs=input_crs,
+        id_column=id_column,
+        population_column=population_column,
         location_column=location_column,
         latitude_column=latitude_column,
         longitude_column=longitude_column,
-        area=region,
     )
     if grid.empty:
         raise ValueError("input grid has no features")
@@ -256,13 +216,6 @@ def normalize_population_grid(
         raise ValueError("some grid cells lack valid spatial geometry")
     if not grid.geometry.geom_type.isin(["Point", "Polygon", "MultiPolygon"]).all():
         raise ValueError("population locations must be points or polygons")
-    if region is not None:
-        projected = region.to_crs(grid.crs).geometry.union_all()
-        included = grid.geometry.representative_point().covered_by(projected)
-        grid = grid.loc[included].copy()
-    if grid.empty:
-        raise ValueError("no population cells inside the specified boundary")
-
     populations = pd.to_numeric(grid[population_name], errors="coerce")
     if (
         populations.isna().any()
@@ -307,7 +260,6 @@ def normalize_population_grid(
         "output_crs": "EPSG:4326",
         "source_population_column": population_name,
         "source_id_column": id_name,
-        "boundary": boundary_source,
         "cells": len(normalized),
         "zero_population_cells": int((populations == 0).sum()),
         "total_population": float(populations.sum()),
@@ -351,10 +303,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--input-crs", help="CRS for WKT in CSV or vector files without CRS"
     )
-    parser.add_argument("--city")
-    parser.add_argument("--state")
-    parser.add_argument("--country")
-    parser.add_argument("--boundary", type=Path)
     parser.add_argument("--layer")
     parser.add_argument("--zip-member")
     parser.add_argument("--overwrite", action="store_true")
@@ -369,10 +317,6 @@ def main(argv: list[str] | None = None) -> int:
             latitude_column=args.latitude_column,
             longitude_column=args.longitude_column,
             input_crs=args.input_crs,
-            city=args.city,
-            state=args.state,
-            country=args.country,
-            boundary=args.boundary,
             layer=args.layer,
             zip_member=args.zip_member,
             overwrite=args.overwrite,

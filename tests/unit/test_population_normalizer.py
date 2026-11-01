@@ -7,7 +7,6 @@ import pandas as pd
 import pytest
 from shapely.geometry import LineString, Point, Polygon, box
 
-from fifteen_minute_city.infrastructure import population_normalizer
 from fifteen_minute_city.infrastructure.origins import load_population_grid
 from fifteen_minute_city.infrastructure.population_normalizer import (
     main,
@@ -259,37 +258,37 @@ def test_invalid_locations_are_rejected(tmp_path, geometry):
         _normalize(source, tmp_path / "out.gpkg")
 
 
-def test_optional_city_crop_uses_supplied_disambiguation(tmp_path, monkeypatch):
-    calls = []
-
-    def geocode(place):
-        calls.append(place)
-        return gpd.GeoDataFrame(
-            geometry=[box(4.77, 45.70, 4.82, 45.75)], crs="EPSG:4326"
-        )
-
-    monkeypatch.setattr(population_normalizer.ox, "geocode_to_gdf", geocode)
-    output = tmp_path / "out.gpkg"
-    _normalize(_grid(tmp_path), output, city="Lyon", country="France")
-    assert calls == [{"city": "Lyon", "country": "France"}]
-    assert gpd.read_file(output)["ID"].tolist() == ["001"]
-
-
-def test_local_boundary_and_overwrite(tmp_path):
+def test_normalizer_keeps_all_cells_main_cli_handles_municipal_crop(tmp_path):
     source = _grid(tmp_path)
-    boundary = tmp_path / "boundary.geojson"
-    gpd.GeoDataFrame(geometry=[box(4.88, 45.70, 4.92, 45.75)], crs="EPSG:4326").to_crs(
-        "EPSG:3857"
-    ).to_file(boundary)
     output = tmp_path / "out.gpkg"
-    _normalize(source, output, boundary=boundary)
-    assert gpd.read_file(output)["ID"].tolist() == ["002"]
+    _normalize(source, output)
+    assert len(gpd.read_file(output)) == 3
+
+    boundary = gpd.GeoDataFrame(
+        geometry=[box(4.79, 45.71, 4.81, 45.74)],
+        crs="EPSG:4326",
+    ).to_crs("EPSG:3857")
+    graph = nx.MultiDiGraph(crs="EPSG:4326")
+    graph.add_node(10, x=4.795, y=45.725)
+    graph.add_node(20, x=4.895, y=45.725)
+    graph.add_edge(10, 20, travel_time=60.0)
+    graph.add_edge(20, 10, travel_time=60.0)
+
+    origins = load_population_grid(
+        output,
+        graph,
+        population_column="POPULACAO",
+        id_column="ID",
+        boundary=boundary,
+    )
+    assert origins.total_weight == 80.5
+    assert len(origins.origins) == 1
+    assert origins.origins[0].origin_id == "grid:001"
+
     with pytest.raises(FileExistsError):
         _normalize(source, output)
     _normalize(source, output, overwrite=True)
     assert len(gpd.read_file(output)) == 3
-    with pytest.raises(ValueError, match="either --boundary or --city"):
-        _normalize(source, tmp_path / "other.gpkg", city="Lyon", boundary=boundary)
 
 
 def test_missing_vector_crs_can_be_declared_without_overriding_known_crs(tmp_path):
