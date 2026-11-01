@@ -75,7 +75,7 @@ def test_insee_estimates_are_reported(tmp_path):
     assert metadata["cells"] == 2
     assert metadata["zero_population_cells_removed"] == 1
     assert metadata["estimated_cells"] == 1
-    assert metadata["estimated_population"] == 20
+    assert metadata["population_in_flagged_cells"] == 20
     assert metadata["total_population"] == 100
 
 
