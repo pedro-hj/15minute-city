@@ -10,10 +10,10 @@ from fifteen_minute_city.api.routes import router
 def create_app() -> FastAPI:
     app = FastAPI(
         title="15-Minute City API",
-        summary="Read-only access to urban accessibility indicators.",
+        summary="Urban accessibility indicators and hypothetical service simulations.",
         description=(
-            "Consult completed analyses by city, origin strategy, service "
-            "category and metric. Authenticate with the X-API-Key header."
+            "Consult completed analyses and simulate additional essential services. "
+            "Authenticate with the X-API-Key header."
         ),
         version="1.0.0",
         docs_url="/docs",
@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cors_origins,
-            allow_methods=["GET"],
+            allow_methods=["GET", "POST"],
             allow_headers=["X-API-Key", "Content-Type"],
         )
 
