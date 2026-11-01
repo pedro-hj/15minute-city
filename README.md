@@ -20,6 +20,28 @@ cd 15minute-city
 uv sync
 ```
 
+## Normalização populacional internacional
+
+A CLI continua aceitando ZIPs originais do IBGE. Para utilizar grades de outros
+países, converta primeiro a fonte para o contrato GeoPackage padronizado
+`cidade15-population-v1`. Há perfis para IBGE, INSEE Filosofi 2021 (200 m)
+e campos configuráveis de outros fornecedores. Exemplo para Lyon:
+
+```bash
+uv run fifteen-minute-city-normalize-population \
+  --profile insee-filosofi-2021 \
+  --input data/input/france/filosofi2021.zip \
+  --zip-member 'ARQUIVO/INTERNO.gpkg' \
+  --boundary data/input/france/lyon.geojson \
+  --output data/normalized/france/lyon_filosofi_2021.gpkg
+```
+
+Para analisar o arquivo normalizado, informe
+`--population-column population --population-id-column grid_id`.
+O normalizador também grava um arquivo `*.metadata.json` com a procedência
+e a proporção de valores populacionais imputados. Veja
+**[normalização de grades e exemplos](docs/POPULATION_NORMALIZATION.md)**.
+
 ## Execução
 
 ```bash
