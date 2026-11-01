@@ -29,13 +29,16 @@ e campos configuráveis de outros fornecedores. Exemplo para Lyon:
 
 ```bash
 uv run fifteen-minute-city-normalize-population \
-  --profile insee-filosofi-2021 \
   --input data/input/france/filosofi2021.zip \
   --zip-member 'ARQUIVO/INTERNO.gpkg' \
-  --boundary data/input/france/lyon.geojson \
+  --city Lyon \
+  --country France \
+  --year 2021 \
   --output data/normalized/france/lyon_filosofi_2021.gpkg
 ```
 
+O normalizador reconhece automaticamente as colunas do IBGE/INSEE e pode
+obter o limite municipal com `--city`. O `--profile` é opcional.
 Para analisar o arquivo normalizado, informe
 `--population-column population --population-id-column grid_id`.
 O normalizador também grava um arquivo `*.metadata.json` com a procedência
