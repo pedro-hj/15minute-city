@@ -68,6 +68,21 @@ def test_boundary_filter_preserves_row_alignment(tmp_path):
     assert grid.iloc[0]["longitude"] == pytest.approx(4.895)
 
 
+def test_insee_projected_grid_is_reprojected_to_wgs84(tmp_path):
+    source = _insee_grid(tmp_path)
+    projected = tmp_path / "projected.gpkg"
+    gpd.read_file(source).to_crs("EPSG:3035").to_file(projected, driver="GPKG")
+    target = tmp_path / "wgs84.gpkg"
+    metadata = normalize_population_grid(
+        projected, target, profile="insee-filosofi-2021"
+    )
+    grid = gpd.read_file(target)
+    assert grid.crs.to_epsg() == 4326
+    assert grid.loc[0, "longitude"] == pytest.approx(4.795, abs=0.001)
+    assert grid.loc[0, "latitude"] == pytest.approx(45.725, abs=0.001)
+    assert metadata["source_crs"] == "EPSG:3035"
+
+
 def test_insee_estimates_are_reported(tmp_path):
     source = _insee_grid(tmp_path)
     target = tmp_path / "normalized.gpkg"
