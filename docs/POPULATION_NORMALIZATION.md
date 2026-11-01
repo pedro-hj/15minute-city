@@ -20,7 +20,7 @@ Cada registro representa uma célula geográfica com população positiva:
 | `geometry` | geometria espacial original reprojetada para EPSG:4326 |
 
 O arquivo `nome.metadata.json` registra procedência, CRS, quantidade de
-células, população total e população imputada. O recorte por município considera
+células, população total e população situada em células sinalizadas como imputadas. O recorte por município considera
 o ponto representativo de cada célula; **não há repartição proporcional entre
 municípios quando uma célula atravessa a fronteira**, conforme a regra de
 análise já existente.
@@ -86,9 +86,11 @@ uv run fifteen-minute-city \
   --enable-db
 ```
 
-O PBF precisa cobrir Lyon. O relatório de normalização informa o quanto da
-população foi imputado; é essencial considerar essa incerteza ao interpretar
-resultados, especialmente em áreas pouco densas.
+O PBF precisa cobrir Lyon. O relatório de normalização informa a população das células sinalizadas como imputadas; é essencial considerar essa incerteza ao interpretar
+resultados, especialmente em áreas pouco densas. O campo `ind` refere-se a indivíduos
+contabilizados em domicílios fiscais, não necessariamente à população
+residente total do recenseamento; não se deve tratar os dois totais como
+equivalentes.
 
 ## Outros países
 
