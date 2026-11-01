@@ -29,25 +29,28 @@ e CSV com localização geográfica para **um único contrato espacial**:
 - `LOCALIZACAO` — geometria da unidade (polígono ou ponto, EPSG:4326);
 - `POPULACAO` — quantidade de habitantes.
 
-Ele não exige país, instituto nem perfil. Detecta automaticamente nomes
-de colunas comuns; se algum campo for ambíguo, permite informar
-`--id-column` e `--population-column`.
+Você indica os campos da origem diretamente. O programa não exige perfil,
+não adivinha colunas e não gera identificadores.
 
 ```bash
 uv run fifteen-minute-city-normalize-population \
   --input data/input/grade.zip \
-  --city "Lyon" \
-  --country "France" \
-  --output data/normalized/lyon.gpkg
+  --id-column ID_UNICO \
+  --location-column geometry \
+  --population-column TOTAL \
+  --output data/normalized/grade.gpkg
 ```
 
-`--city` é opcional e faz o recorte geográfico consultando o OSMnx. Para
-conjuntos ZIP com várias fontes, use `--zip-member`.
-O GeoPackage de saída mantém as três colunas, enquanto um JSON separado
-registra procedência e validações.
+Os nomes `ID_UNICO` e `TOTAL` são exemplos; use os campos da sua grade.
+Em arquivos vetoriais, `geometry` representa a geometria nativa e pode ser
+omitido. Em CSV, informe uma coluna WKT e seu CRS, ou latitude/longitude.
+`--city` é opcional e permite recortar a grade pelo município.
+Para ZIPs com várias fontes ou arquivos com várias camadas, use
+`--zip-member` ou `--layer`, respectivamente.
 
-Na análise, use
-`--population-grid data/normalized/lyon.gpkg --population-column POPULACAO --population-id-column ID`.
+O GeoPackage de saída mantém as três colunas padronizadas. Um JSON separado
+registra procedência, mapeamento e totais. Na CLI principal, o comando sempre usa
+`--population-grid data/normalized/grade.gpkg --population-column POPULACAO --population-id-column ID`.
 
 Veja **[normalizador e formatos aceitos](docs/POPULATION_NORMALIZATION.md)**.
 

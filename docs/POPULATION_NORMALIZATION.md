@@ -1,140 +1,136 @@
 # Normalizador universal de grades populacionais
 
-O normalizador do Cidade15 **não depende de país nem de instituto estatístico**.
-Ele converte dados populacionais espaciais para um contrato fixo, com apenas
-três campos:
+O fluxo é: **arquivo de origem + mapeamento dos campos → arquivo padronizado**.
+O código não depende de Brasil, França, instituto estatístico ou perfil.
+Você informa quais campos representam o identificador, a localização e a
+quantidade de habitantes. O normalizador não adivinha colunas nem cria IDs.
 
-| Campo | Significado | Tipo |
-| --- | --- | --- |
-| `ID` | identificador da célula; original quando disponível, gerado caso contrário | texto |
-| `LOCALIZACAO` | geometria da célula ou ponto populacional, em EPSG:4326 | espacial (GeoPackage) |
-| `POPULACAO` | quantidade de pessoas representadas pela unidade espacial | numérico >= 0 |
-
-O GeoPackage possui ainda o identificador técnico `fid` exigido pelo formato,
-mas o contrato de atributos da aplicação é apenas `ID`, `LOCALIZACAO`,
-`POPULACAO`. Por padrão, o GeoPandas apresenta a geometria lida com o nome
-`geometry`; o campo geométrico **dentro do GeoPackage** chama-se
-`LOCALIZACAO`.
-
-O formato de saída é GeoPackage (`.gpkg`) com a camada
-`grade_populacional`. Um arquivo `*.metadata.json` separado registra origem,
-campos detectados, CRS original, recorte e totais, **sem poluir os três campos
-normalizados**.
-
-## Como o normalizador trabalha
-
-1. Detecta o formato do arquivo de entrada (GPKG, SHP, GeoJSON, CSV ou ZIP).
-2. Utiliza a geometria espacial original ou cria pontos a partir de
-   latitude/longitude. CSV com WKT também é aceito mediante CRS informado.
-3. Identifica colunas de ID e população por uma lista **genérica** de nomes
-   frequentes (`ID_UNICO`, `idcar_200m`, `grid_id`, `POPULACAO`, `ind`,
-   `TOTAL`, `residents`, etc.).
-4. **Se houver ambiguidade, interrompe** e informa os campos disponíveis.
-   Não utiliza números aleatórios de outras colunas como habitantes.
-5. Valida a presença da geometria, CRS, população numérica e não negativa,
-   identificadores únicos quando fornecidos.
-6. Se solicitado, recorta a grade pela cidade (`--city`) ou por limite local
-   (`--boundary`). O ponto representativo de cada célula deve estar dentro
-   do limite. Não divide população proporcionalmente em células de fronteira.
-7. Grava `ID`, `LOCALIZACAO` e `POPULACAO` em EPSG:4326.
-
-**Importante:** o programa padroniza a **estrutura dos dados**, não a definição
-estatística de população. Diferentes órgãos podem medir populações distintas.
-Essa informação deve ser documentada na metodologia do TCC.
-
-## Exemplo: qualquer grade vetorial
-
-```bash
-uv run fifteen-minute-city-normalize-population \
-  --input data/input/grade.zip \
-  --output data/normalized/grade.gpkg
-```
-
-Esse comando funciona sem escolher o país ou a instituição, desde que o ZIP
-contenha uma fonte vetorial e que as colunas possam ser identificadas com
-segurança. Arquivos `.gpkg`, `.shp` e `.geojson` também podem ser informados
-diretamente.
-
-Se o ZIP contiver mais de uma fonte espacial, use
-`unzip -Z1 data/input/grade.zip` para localizar o nome interno e acrescente
-`--zip-member 'PASTA/ARQUIVO.gpkg'`.
-
-## Recorte automático por cidade
-
-```bash
-uv run fifteen-minute-city-normalize-population \
-  --input data/input/grade.zip \
-  --city "Lyon" \
-  --country "France" \
-  --output data/normalized/lyon.gpkg
-```
-
-O geocodificador OSMnx busca o limite municipal por nome; requer internet.
-`--country` e `--state` são opcionais e ajudam a evitar ambiguidades.
-Também é possível usar `--boundary data/input/lyon.geojson` para recorte
-sem geocodificação. Não combine `--city` com `--boundary`.
-
-## Campos com nomes desconhecidos
-
-Se a grade possuir, por exemplo, `ZONE_CODE` e `PESSOAS2021`, informe:
+## Comando básico
 
 ```bash
 uv run fifteen-minute-city-normalize-population \
   --input data/input/grade.gpkg \
-  --id-column ZONE_CODE \
-  --population-column PESSOAS2021 \
+  --id-column CODIGO_CELULA \
+  --location-column geometry \
+  --population-column HABITANTES \
   --output data/normalized/grade.gpkg
 ```
 
-Se a grade não possuir ID, o programa cria um ID técnico sequencial e
-registra isso no relatório. Não cria estimativas populacionais.
+Substitua `CODIGO_CELULA` e `HABITANTES` pelos nomes exatos das colunas da origem.
 
-## CSV com coordenadas
+| Parâmetro | O que informar |
+| --- | --- |
+| `--input` | arquivo GPKG, SHP, GeoJSON, CSV ou ZIP contendo um desses formatos |
+| `--id-column` | coluna com o ID único de cada célula; obrigatório |
+| `--location-column` | geometria nativa do arquivo vetorial ou coluna WKT do CSV |
+| `--population-column` | coluna com a quantidade de habitantes por célula; obrigatório |
+| `--output` | caminho do arquivo `.gpkg` normalizado |
 
-É possível converter uma tabela CSV quando cada linha contém
-latitude, longitude e quantidade de pessoas:
+Em arquivos vetoriais, `geometry` significa a geometria espacial nativa e pode
+ser omitido. Também é aceito o nome físico dessa coluna, como `geom` em um GPKG.
+Shapefile armazena a geometria no arquivo `.shp`; ela não é uma coluna comum
+da tabela `.dbf`. Localização significa **ponto ou polígono**, não nome de cidade,
+endereço ou código municipal.
 
-```csv
-cell_id,latitude,longitude,population
-A,-23.96,-46.33,120
-B,-23.97,-46.32,80
-```
+Se um campo informado não existir, o programa interrompe e mostra as colunas
+disponíveis. Se o ZIP contiver várias fontes, indique
+`--zip-member 'PASTA/ARQUIVO.gpkg'`. Para arquivos com várias camadas, indique
+`--layer NOME_DA_CAMADA`; nenhuma delas é escolhida silenciosamente.
+
+## Exemplos de mapeamento: Brasil e França
+
+Estes exemplos pressupõem os nomes de campos indicados; confira os nomes
+existentes na sua edição dos dados. Não há tratamento especial para esses países.
 
 ```bash
+# Exemplo IBGE: ID_UNICO, geometria do Shapefile e TOTAL.
 uv run fifteen-minute-city-normalize-population \
-  --input data/input/celulas.csv \
-  --output data/normalized/celulas.gpkg
+  --input data/input/brasil/grade.zip \
+  --id-column ID_UNICO \
+  --location-column geometry \
+  --population-column TOTAL \
+  --output data/normalized/brasil.gpkg
+
+# Exemplo INSEE: idcar_200m, geometria do GeoPackage e ind.
+uv run fifteen-minute-city-normalize-population \
+  --input data/input/franca/grade.gpkg \
+  --id-column idcar_200m \
+  --location-column geometry \
+  --population-column ind \
+  --output data/normalized/franca.gpkg
 ```
 
-Para coordenadas em WKT (`POLYGON (...)` ou `POINT (...)`), informe
-`--input-crs EPSG:4326` e, se necessário, `--location-column`.
-Para nomes incomuns de coordenadas, use `--latitude-column` e
-`--longitude-column`. CSV sem localização não pode ser convertido
-automaticamente em uma grade espacial.
+## Arquivo produzido
+
+A camada `grade_populacional` do GeoPackage contém:
+
+| Campo | Conteúdo |
+| --- | --- |
+| `ID` | identificador original, preservado como texto |
+| `LOCALIZACAO` | ponto ou polígono original, convertido para EPSG:4326 |
+| `POPULACAO` | quantidade de habitantes, numérica e não negativa |
+
+O GeoPackage tem ainda uma chave técnica `fid`. Ao abrir o arquivo com
+GeoPandas, a coluna espacial aparece como `geometry`; seu nome físico continua
+sendo `LOCALIZACAO`. Um arquivo `.metadata.json` separado registra a origem,
+o mapeamento aplicado, os sistemas de coordenadas e os totais.
+
+IDs nulos, vazios ou repetidos, população ausente, negativa ou não finita,
+geometrias vazias, inválidas ou de tipos diferentes de ponto/polígono são
+rejeitados. Células com população zero são preservadas na saída. Não há
+arredondamento para inteiros, alteração da resolução ou estimativa de habitantes.
 
 ## Uso na CLI principal
+
+Após normalizar, o mapeamento é sempre o mesmo, independentemente da origem:
 
 ```bash
 uv run fifteen-minute-city \
   --city "Lyon" \
   --country "France" \
   --pbf data/input/france-latest.osm.pbf \
-  --population-grid data/normalized/lyon.gpkg \
+  --population-grid data/normalized/franca.gpkg \
   --population-column POPULACAO \
   --population-id-column ID
 ```
 
-O algoritmo lê a geometria do GeoPackage independentemente do nome interno
-da coluna espacial. O normalizador **não modifica o PostgreSQL, a API ou
-os cálculos de acessibilidade**.
+A CLI principal lê a geometria do arquivo, recorta pelo município e associa as
+células aos nós da rede. O normalizador preserva os polígonos para essa etapa.
 
-## Limitações atuais
+## CSV com localização
 
-Esta implementação suporta grades **vetoriais** e CSV espacial. GeoTIFF
-(raster), NetCDF e arquivos tabulares sem localização exigem etapas de leitura
-específicas que ainda não foram implementadas. Portanto, o **contrato de saída
-é universal**, mas cada formato físico precisa ter um leitor.
+Para uma coluna WKT (`POINT (...)` ou `POLYGON (...)`), indique também o sistema
+de coordenadas usado na origem:
 
-Não são feitas desagregação espacial, interpolação, conversão de densidade
-para habitantes, nem correção automática de estimativas ou definições
-estatísticas incompatíveis.
+```bash
+uv run fifteen-minute-city-normalize-population \
+  --input data/input/celulas.csv \
+  --id-column codigo \
+  --location-column forma \
+  --input-crs EPSG:4326 \
+  --population-column moradores \
+  --output data/normalized/celulas.gpkg
+```
+
+Se a localização estiver em duas colunas, substitua `--location-column` e
+`--input-crs` por `--latitude-column LAT --longitude-column LON`.
+Essas coordenadas devem estar em graus, no sistema EPSG:4326. CSV deve usar
+vírgula como separador. IDs textuais, incluindo zeros à esquerda, são preservados.
+
+## Opções adicionais
+
+- `--city "Lyon" --country "France"`: recorte opcional pelo limite municipal
+  obtido com OSMnx; requer internet. `--state` pode ajudar a identificar a cidade.
+- `--boundary limite.geojson`: recorte por um arquivo local, em lugar de `--city`.
+- `--input-crs EPSG:XXXX`: também permite declarar o sistema de um arquivo
+  vetorial sem CRS; não substitui um CRS conhecido por outro incompatível.
+- `--overwrite`: permite substituir uma saída existente.
+
+No recorte, o ponto representativo da célula deve estar dentro do limite.
+Não se divide a população de células que cruzam a fronteira municipal.
+
+A universalidade está no mapeamento e no contrato de saída. Os leitores atuais
+aceitam os formatos acima; GeoTIFF, NetCDF e tabelas sem localização não são
+suportados. A coluna populacional deve conter **habitantes por célula**, não
+densidade ou porcentagem. Padronizar a estrutura não torna equivalentes as
+definições estatísticas de fontes diferentes.

@@ -10,7 +10,6 @@ import argparse
 import json
 import os
 import tempfile
-import unicodedata
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -18,84 +17,20 @@ import geopandas as gpd
 import numpy as np
 import osmnx as ox
 import pandas as pd
-from shapely import wkt
+import pyogrio
+from shapely.errors import GEOSException
 
 _VECTOR_EXTENSIONS = {".gpkg", ".shp", ".geojson", ".json"}
 _SUPPORTED_EXTENSIONS = _VECTOR_EXTENSIONS | {".csv"}
-_ID_ALIASES = {
-    "id",
-    "id_unico",
-    "id_unico_grade",
-    "grid_id",
-    "cell_id",
-    "cellcode",
-    "cell_code",
-    "id_cell",
-    "id_celula",
-    "celula",
-    "idcar_200m",
-    "idcar_1km",
-}
-_POPULATION_ALIASES = {
-    "populacao",
-    "population",
-    "pop",
-    "pop_total",
-    "total_population",
-    "total",
-    "ind",
-    "residents",
-    "residentes",
-    "habitantes",
-    "habitants",
-    "inhabitants",
-    "head_count",
-    "population_total",
-}
-_LATITUDE_ALIASES = {"latitude", "lat"}
-_LONGITUDE_ALIASES = {"longitude", "lon", "lng", "long"}
-_WKT_ALIASES = {"localizacao", "geometry", "geom", "wkt", "the_geom"}
 
 
-def _canonical(name: str) -> str:
-    value = unicodedata.normalize("NFKD", str(name))
-    return (
-        "".join(char for char in value if not unicodedata.combining(char))
-        .casefold()
-        .strip()
-    )
-
-
-def _select_column(
-    columns: list[str],
-    explicit: str | None,
-    aliases: set[str],
-    option: str,
-    *,
-    required: bool = True,
-) -> str | None:
-    normalized = {}
-    for column in columns:
-        normalized.setdefault(_canonical(column), []).append(column)
-
-    if explicit is not None:
-        matches = normalized.get(_canonical(explicit), [])
-        if len(matches) != 1:
-            raise ValueError(
-                f"{option}='{explicit}' not found or ambiguous; "
-                f"available columns: {', '.join(columns)}"
-            )
-        return matches[0]
-
-    matches = [column for column in columns if _canonical(column) in aliases]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1 or required:
+def _require_column(columns: list[str], name: str, option: str) -> str:
+    """Use the supplied mapping exactly; never infer statistical meaning."""
+    if name not in columns:
         raise ValueError(
-            f"cannot safely identify {option}; provide it explicitly. "
-            f"Available columns: {', '.join(columns)}"
+            f"{option}='{name}' not found; available columns: {', '.join(columns)}"
         )
-    return None
+    return name
 
 
 def _source(path: Path, zip_member: str | None) -> tuple[str, str, str | None]:
@@ -175,57 +110,72 @@ def _read_input(
     area: gpd.GeoDataFrame | None,
 ) -> gpd.GeoDataFrame:
     if ext != ".csv":
-        if input_crs is not None or location_column is not None:
-            raise ValueError("spatial vector input already defines geometry/CRS")
         if latitude_column is not None or longitude_column is not None:
             raise ValueError("latitude/longitude options only apply to CSV")
+        layers = pyogrio.list_layers(source)
+        if layer is None and len(layers) != 1:
+            names = ", ".join(str(item[0]) for item in layers)
+            raise ValueError(f"input contains multiple layers; use --layer: {names}")
         options = {"layer": layer} if layer else {}
+        info = pyogrio.read_info(source, **options)
+        geometry_name = info.get("geometry_name") or "geometry"
+        if location_column is not None and location_column not in {
+            "geometry",
+            geometry_name,
+        }:
+            raise ValueError(
+                f"--location-column='{location_column}' is not the spatial column; "
+                f"use '{geometry_name}' (or 'geometry')"
+            )
+        source_crs = info["crs"]
+        if source_crs is None and input_crs is None:
+            raise ValueError("input grid lacks a CRS; provide --input-crs")
         sample = gpd.read_file(source, rows=1, **options)
-        if sample.crs is None:
-            raise ValueError("input grid lacks a CRS")
+        # set_crs checks conflicts instead of silently replacing known coordinates.
+        if input_crs is not None:
+            sample = sample.set_crs(input_crs)
         if area is not None:
             projected_area = area.to_crs(sample.crs)
-            return gpd.read_file(
-                source, bbox=tuple(projected_area.total_bounds), **options
-            )
-        return gpd.read_file(source, **options)
+            options["bbox"] = tuple(projected_area.total_bounds)
+        grid = gpd.read_file(source, **options)
+        if input_crs is not None:
+            grid = grid.set_crs(input_crs)
+        return grid
 
     if layer is not None:
         raise ValueError("--layer only applies to spatial formats")
     if member is not None:
         with ZipFile(path) as archive, archive.open(member) as data:
-            table = pd.read_csv(data, dtype=str)
+            table = pd.read_csv(data, dtype=str, keep_default_na=False)
     else:
-        table = pd.read_csv(path, dtype=str)
+        table = pd.read_csv(path, dtype=str, keep_default_na=False)
     columns = list(table.columns)
 
-    explicit_wkt = location_column is not None
-    auto_wkt = [column for column in columns if _canonical(column) in _WKT_ALIASES]
-    use_wkt = explicit_wkt or (len(auto_wkt) == 1)
-    if use_wkt:
-        if latitude_column or longitude_column:
+    if location_column is not None:
+        if latitude_column is not None or longitude_column is not None:
             raise ValueError("use WKT geometry or latitude/longitude, not both")
-        wkt_col = _select_column(
-            columns, location_column, _WKT_ALIASES, "--location-column"
-        )
+        wkt_col = _require_column(columns, location_column, "--location-column")
         if input_crs is None:
             raise ValueError("CSV WKT geometry requires --input-crs")
         try:
-            geometry = table[wkt_col].map(wkt.loads)
-        except (TypeError, ValueError) as exc:
+            geometry = gpd.GeoSeries.from_wkt(table[wkt_col], crs=input_crs)
+        except (TypeError, ValueError, GEOSException) as exc:
             raise ValueError("invalid WKT geometry in CSV") from exc
         return gpd.GeoDataFrame(
             table.drop(columns=[wkt_col]), geometry=geometry, crs=input_crs
         )
 
+    if latitude_column is None or longitude_column is None:
+        raise ValueError(
+            "CSV requires --location-column (WKT), or both "
+            "--latitude-column and --longitude-column"
+        )
     if input_crs is not None and input_crs.upper() != "EPSG:4326":
         raise ValueError("CSV latitude/longitude use EPSG:4326; omit --input-crs")
-    lat_col = _select_column(
-        columns, latitude_column, _LATITUDE_ALIASES, "--latitude-column"
-    )
-    lon_col = _select_column(
-        columns, longitude_column, _LONGITUDE_ALIASES, "--longitude-column"
-    )
+    lat_col = _require_column(columns, latitude_column, "--latitude-column")
+    lon_col = _require_column(columns, longitude_column, "--longitude-column")
+    if lat_col == lon_col:
+        raise ValueError("latitude and longitude columns must differ")
     latitude = pd.to_numeric(table[lat_col], errors="coerce")
     longitude = pd.to_numeric(table[lon_col], errors="coerce")
     if (
@@ -245,8 +195,8 @@ def normalize_population_grid(
     input_path: str | Path,
     output_path: str | Path,
     *,
-    population_column: str | None = None,
-    id_column: str | None = None,
+    population_column: str,
+    id_column: str,
     location_column: str | None = None,
     latitude_column: str | None = None,
     longitude_column: str | None = None,
@@ -293,16 +243,19 @@ def normalize_population_grid(
     source_crs = str(grid.crs)
     geometry_name = grid.geometry.name
     columns = [column for column in grid.columns if column != geometry_name]
-    population_name = _select_column(
-        columns, population_column, _POPULATION_ALIASES, "--population-column"
-    )
-    id_name = _select_column(
-        columns, id_column, _ID_ALIASES, "--id-column", required=False
-    )
+    population_name = _require_column(columns, population_column, "--population-column")
+    id_name = _require_column(columns, id_column, "--id-column")
+    if id_name == population_name:
+        raise ValueError("ID and population columns must differ")
 
-    valid_geometry = grid.geometry.notna() & ~grid.geometry.is_empty
-    if not valid_geometry.all():
+    if (
+        grid.geometry.isna().any()
+        or grid.geometry.is_empty.any()
+        or not grid.geometry.is_valid.all()
+    ):
         raise ValueError("some grid cells lack valid spatial geometry")
+    if not grid.geometry.geom_type.isin(["Point", "Polygon", "MultiPolygon"]).all():
+        raise ValueError("population locations must be points or polygons")
     if region is not None:
         projected = region.to_crs(grid.crs).geometry.union_all()
         included = grid.geometry.representative_point().covered_by(projected)
@@ -319,21 +272,11 @@ def normalize_population_grid(
     if (populations < 0).any():
         raise ValueError("POPULACAO must not be negative")
 
-    if id_name is not None:
-        ids = grid[id_name].astype("string")
-        if ids.isna().any() or ids.str.strip().eq("").any():
-            raise ValueError("ID must not be null or empty")
-        if ids.duplicated().any():
-            raise ValueError("ID values must be unique")
-        generated_ids = False
-    else:
-        # A surrogate is a technical identifier, not a claim about the source.
-        ids = pd.Series(
-            [f"cell-{index + 1:08d}" for index in range(len(grid))],
-            index=grid.index,
-            dtype="string",
-        )
-        generated_ids = True
+    ids = grid[id_name].astype("string")
+    if ids.isna().any() or ids.str.strip().eq("").any():
+        raise ValueError("ID must not be null or empty")
+    if ids.duplicated().any():
+        raise ValueError("ID values must be unique")
 
     normalized = gpd.GeoDataFrame(
         {
@@ -344,6 +287,15 @@ def normalize_population_grid(
         geometry="LOCALIZACAO",
         crs=grid.crs,
     ).to_crs("EPSG:4326")
+    bounds = normalized.total_bounds
+    if (
+        not np.isfinite(bounds).all()
+        or bounds[0] < -180
+        or bounds[2] > 180
+        or bounds[1] < -90
+        or bounds[3] > 90
+    ):
+        raise ValueError("geometry is outside WGS84 bounds; check the input CRS")
     normalized = normalized[["ID", "LOCALIZACAO", "POPULACAO"]]
 
     metadata = {
@@ -355,7 +307,6 @@ def normalize_population_grid(
         "output_crs": "EPSG:4326",
         "source_population_column": population_name,
         "source_id_column": id_name,
-        "generated_ids": generated_ids,
         "boundary": boundary_source,
         "cells": len(normalized),
         "zero_population_cells": int((populations == 0).sum()),
@@ -389,12 +340,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--population-column")
-    parser.add_argument("--id-column")
-    parser.add_argument("--location-column", help="WKT geometry column in CSV")
+    parser.add_argument("--population-column", required=True)
+    parser.add_argument("--id-column", required=True)
+    parser.add_argument(
+        "--location-column",
+        help="Spatial column in vector files (default: native geometry), or WKT in CSV",
+    )
     parser.add_argument("--latitude-column")
     parser.add_argument("--longitude-column")
-    parser.add_argument("--input-crs", help="Required for WKT coordinates in CSV")
+    parser.add_argument(
+        "--input-crs", help="CRS for WKT in CSV or vector files without CRS"
+    )
     parser.add_argument("--city")
     parser.add_argument("--state")
     parser.add_argument("--country")
