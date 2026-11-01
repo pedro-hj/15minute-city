@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 import re
 import unicodedata
 from collections.abc import Sequence
@@ -9,8 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from fifteen_minute_city.application.analysis_runner import AnalysisOutcome
+from fifteen_minute_city.application.simulation_package import export_completed_execution
 from fifteen_minute_city.constants import SERVICE_CATEGORIES
 from fifteen_minute_city.core.modules.locales import Region
+from fifteen_minute_city.db.connection import session_scope
 
 
 def _slugify(text: str) -> str:
@@ -196,6 +199,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Já existe um arquivo no caminho escolhido; escolha outro ou use --overwrite"
         )
     print(f"Result saved at {output_path}")
+
+    if args.enable_db:
+        # calculate_accessibility() has already committed the completed execution.
+        # Export only afterwards: the package reads saved reachability and population.
+        if region.execution_id is None:
+            raise RuntimeError("The persisted analysis did not provide an execution ID")
+        execution_id = region.execution_id
+        output_dir = Path(
+            os.getenv("SIMULATION_PACKAGE_DIR", "data/simulation-packages")
+        )
+        print(f"Preparing FMC1 for completed execution {execution_id}...", flush=True)
+        try:
+            with session_scope() as db:
+                package_path = export_completed_execution(
+                    db,
+                    execution_id,
+                    cache_dir=args.cache_dir,
+                    output_dir=output_dir,
+                )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Analysis {execution_id} was saved successfully, but FMC1 "
+                "generation failed. You can retry the export separately."
+            ) from exc
+        print(f"Simulation package ready at {package_path}")
+
     return 0
 
 
