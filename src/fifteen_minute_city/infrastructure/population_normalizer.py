@@ -1,7 +1,7 @@
-"""Normalize population grids from different statistical agencies into GeoPackage.
+"""Normalize spatial population grids to ID, LOCALIZACAO and POPULACAO.
 
-The output preserves source geometries while standardizing the population, cell
-identifier, provenance, and imputation indicator consumed by the City15 CLI.
+Institution and country independent. LOCALIZACAO is the spatial geometry
+(polygon or point), not a text label. All output geometry uses WGS84.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import argparse
 import json
 import os
 import tempfile
-from dataclasses import dataclass
+import unicodedata
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -18,369 +18,309 @@ import geopandas as gpd
 import numpy as np
 import osmnx as ox
 import pandas as pd
-
-
-@dataclass(frozen=True)
-class PopulationProfile:
-    country: str | None
-    source: str
-    population_column: str | None
-    id_column: str | None
-    estimated_column: str | None = None
-    year: int | None = None
-
-
-PROFILES = {
-    "ibge": PopulationProfile("Brazil", "IBGE", "TOTAL", "ID_UNICO"),
-    "insee-filosofi-2021": PopulationProfile(
-        "France", "INSEE Filosofi", "ind", "idcar_200m", "i_est_200", 2021
-    ),
-    "custom": PopulationProfile(None, "custom", None, None),
-}
+from shapely import wkt
 
 _VECTOR_EXTENSIONS = {".gpkg", ".shp", ".geojson", ".json"}
-
-# For unknown sources, infer only unambiguous, commonly used field names.
-# Never pick arbitrary numeric columns as population: that can corrupt metrics.
-_POPULATION_ALIASES = {
-    "population",
-    "pop",
-    "pop_total",
-    "total_population",
-    "populacao",
-    "população",
-    "residents",
-    "residentes",
-    "habitants",
-    "inhabitants",
-}
+_SUPPORTED_EXTENSIONS = _VECTOR_EXTENSIONS | {".csv"}
 _ID_ALIASES = {
-    "grid_id",
-    "cell_id",
-    "cell_code",
-    "cellcode",
-    "id_cell",
-    "id_celula",
-    "celula",
-    "id",
+    "id", "id_unico", "id_unico_grade", "grid_id", "cell_id", "cellcode",
+    "cell_code", "id_cell", "id_celula", "celula", "idcar_200m", "idcar_1km",
 }
+_POPULATION_ALIASES = {
+    "populacao", "population", "pop", "pop_total", "total_population",
+    "total", "ind", "residents", "residentes", "habitantes", "habitants",
+    "inhabitants", "head_count", "population_total",
+}
+_LATITUDE_ALIASES = {"latitude", "lat"}
+_LONGITUDE_ALIASES = {"longitude", "lon", "lng", "long"}
+_WKT_ALIASES = {"localizacao", "geometry", "geom", "wkt", "the_geom"}
 
 
-def _infer_schema(
-    columns: list[str],
-    *,
-    profile: str | None,
-    population_column: str | None,
-    id_column: str | None,
-    estimated_column: str | None,
-) -> tuple[str, str, str, str | None]:
-    """Match known institutes by column signature, or safely infer generic fields."""
-    if profile is not None and profile not in PROFILES:
-        raise ValueError(f"unknown population profile '{profile}'")
-    available = {column.casefold(): column for column in columns}
-    recognized = [
-        name
-        for name, candidate in PROFILES.items()
-        if name != "custom"
-        and candidate.population_column is not None
-        and candidate.id_column is not None
-        and candidate.population_column.casefold() in available
-        and candidate.id_column.casefold() in available
-    ]
-    if profile is None and len(recognized) > 1:
-        raise ValueError(
-            "multiple known population schemas match the columns; use --profile"
-        )
-    selected = profile or (recognized[0] if recognized else "custom")
-    defaults = PROFILES[selected]
+def _canonical(name: str) -> str:
+    value = unicodedata.normalize("NFKD", str(name))
+    return "".join(char for char in value if not unicodedata.combining(char)).casefold().strip()
 
-    def resolve(
-        explicit: str | None,
-        preferred: str | None,
-        aliases: set[str],
-        option: str,
-    ) -> str:
-        if explicit is not None:
-            match = available.get(explicit.casefold())
-            if match is None:
-                raise ValueError(
-                    f"{option} column '{explicit}' not found; "
-                    f"available columns: {', '.join(columns)}"
-                )
-            return match
-        if preferred is not None and preferred.casefold() in available:
-            return available[preferred.casefold()]
-        matches = [column for column in columns if column.casefold() in aliases]
+
+def _select_column(
+    columns: list[str], explicit: str | None, aliases: set[str], option: str,
+    *, required: bool = True,
+) -> str | None:
+    normalized = {}
+    for column in columns:
+        normalized.setdefault(_canonical(column), []).append(column)
+
+    if explicit is not None:
+        matches = normalized.get(_canonical(explicit), [])
         if len(matches) != 1:
             raise ValueError(
-                f"cannot safely infer {option} column; "
-                f"specify {option} explicitly. Available columns: {', '.join(columns)}"
+                f"{option}='{explicit}' not found or ambiguous; "
+                f"available columns: {', '.join(columns)}"
             )
         return matches[0]
 
-    pop = resolve(
-        population_column,
-        defaults.population_column,
-        _POPULATION_ALIASES,
-        "--population-column",
-    )
-    identity = resolve(id_column, defaults.id_column, _ID_ALIASES, "--id-column")
-    flag = estimated_column or defaults.estimated_column
-    if flag is not None:
-        flag = available.get(flag.casefold())
-        if flag is None and estimated_column is not None:
-            raise ValueError(
-                f"--estimated-column '{estimated_column}' not found; "
-                f"available columns: {', '.join(columns)}"
-            )
-    return selected, pop, identity, flag
+    matches = [column for column in columns if _canonical(column) in aliases]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1 or required:
+        raise ValueError(
+            f"cannot safely identify {option}; provide it explicitly. "
+            f"Available columns: {', '.join(columns)}"
+        )
+    return None
 
 
-def _resolve_boundary(
-    *,
-    boundary_file: Path | None,
-    city: str | None,
-    state: str | None,
-    country: str,
-) -> tuple[gpd.GeoDataFrame | None, str | None]:
-    if boundary_file is not None and city is not None:
-        raise ValueError("use either --boundary or --city, not both")
-    if state and not city:
-        raise ValueError("--state requires --city")
-    if boundary_file is not None:
-        return gpd.read_file(boundary_file), str(boundary_file)
-    if city is None:
-        return None, None
-    locale = {"city": city, "country": country}
-    if state:
-        locale["state"] = state
-    # The same OSMnx geocoder used by Region.build_graph().
-    return ox.geocode_to_gdf(locale), f"geocoded:{city},{state or ''},{country}"
-
-
-def _vector_source(path: Path, zip_member: str | None) -> str:
+def _source(path: Path, zip_member: str | None) -> tuple[str, str, str | None]:
     if not path.is_file():
-        raise FileNotFoundError(f"population grid not found: {path}")
+        raise FileNotFoundError(f"input not found: {path}")
     if path.suffix.lower() != ".zip":
         if zip_member is not None:
-            raise ValueError("--zip-member requires a ZIP input")
-        if path.suffix.lower() not in _VECTOR_EXTENSIONS:
-            raise ValueError(
-                "unsupported population file; use GPKG, SHP, GeoJSON or ZIP"
-            )
-        return str(path)
+            raise ValueError("--zip-member only applies to ZIP input")
+        ext = path.suffix.lower()
+        if ext not in _SUPPORTED_EXTENSIONS:
+            raise ValueError("unsupported format: use GPKG, SHP, GeoJSON, CSV or ZIP")
+        return str(path), ext, None
 
     with ZipFile(path) as archive:
-        members = [
-            name
-            for name in archive.namelist()
-            if not name.endswith("/")
-            and Path(name).suffix.lower() in _VECTOR_EXTENSIONS
+        entries = [
+            name for name in archive.namelist()
+            if not name.endswith("/") and Path(name).suffix.lower() in _SUPPORTED_EXTENSIONS
         ]
-    if zip_member is not None:
-        if zip_member not in members:
-            raise ValueError(f"ZIP does not contain geospatial member '{zip_member}'")
-        chosen = zip_member
+    if zip_member is None:
+        if len(entries) != 1:
+            raise ValueError("ZIP contains multiple spatial/tabular sources; use --zip-member")
+        zip_member = entries[0]
+    if zip_member not in entries:
+        raise ValueError(f"ZIP member not found: {zip_member}")
+    ext = Path(zip_member).suffix.lower()
+    return f"zip://{path}!{zip_member}", ext, zip_member
+
+
+def _boundary(
+    *, city: str | None, state: str | None, country: str | None,
+    boundary: str | Path | None,
+) -> tuple[gpd.GeoDataFrame | None, str | None]:
+    if boundary is not None and city is not None:
+        raise ValueError("use either --boundary or --city, not both")
+    if state is not None and city is None:
+        raise ValueError("--state requires --city")
+    if boundary is not None:
+        path = Path(boundary).expanduser().resolve()
+        area = gpd.read_file(path)
+        origin = str(path)
+    elif city is not None:
+        place = {"city": city}
+        if state:
+            place["state"] = state
+        if country:
+            place["country"] = country
+        area = ox.geocode_to_gdf(place)
+        origin = f"geocoded:{city},{state or ''},{country or ''}"
     else:
-        # A shapefile archive also contains .dbf/.shx/.prj sidecars; only its
-        # .shp member counts as an independent spatial dataset.
-        if len(members) != 1:
-            raise ValueError(
-                "ZIP must contain exactly one vector dataset; "
-                "select one with --zip-member"
+        return None, None
+
+    if area.empty or area.crs is None:
+        raise ValueError("municipality boundary must be non-empty and have a CRS")
+    if not area.geometry.notna().all() or area.geometry.is_empty.any():
+        raise ValueError("municipality boundary contains empty geometries")
+    return area, origin
+
+
+def _read_input(
+    path: Path, source: str, ext: str, member: str | None,
+    *, layer: str | None, input_crs: str | None,
+    location_column: str | None, latitude_column: str | None,
+    longitude_column: str | None, area: gpd.GeoDataFrame | None,
+) -> gpd.GeoDataFrame:
+    if ext != ".csv":
+        if input_crs is not None or location_column is not None:
+            raise ValueError("spatial vector input already defines geometry/CRS")
+        if latitude_column is not None or longitude_column is not None:
+            raise ValueError("latitude/longitude options only apply to CSV")
+        options = {"layer": layer} if layer else {}
+        sample = gpd.read_file(source, rows=1, **options)
+        if sample.crs is None:
+            raise ValueError("input grid lacks a CRS")
+        if area is not None:
+            projected_area = area.to_crs(sample.crs)
+            return gpd.read_file(
+                source, bbox=tuple(projected_area.total_bounds), **options
             )
-        chosen = members[0]
-    return f"zip://{path}!{chosen}"
+        return gpd.read_file(source, **options)
 
+    if layer is not None:
+        raise ValueError("--layer only applies to spatial formats")
+    if member is not None:
+        with ZipFile(path) as archive:
+            with archive.open(member) as data:
+                table = pd.read_csv(data, dtype=str)
+    else:
+        table = pd.read_csv(path, dtype=str)
+    columns = list(table.columns)
 
-def _read_grid(
-    source: str, *, boundary: gpd.GeoDataFrame | None, layer: str | None
-) -> tuple[gpd.GeoDataFrame, str]:
-    options = {"layer": layer} if layer else {}
-    sample = gpd.read_file(source, rows=1, **options)
-    if sample.crs is None:
-        raise ValueError("population grid must define a CRS")
-    source_crs = str(sample.crs)
-    if boundary is None:
-        return gpd.read_file(source, **options), source_crs
+    explicit_wkt = location_column is not None
+    auto_wkt = [
+        column for column in columns
+        if _canonical(column) in _WKT_ALIASES
+    ]
+    use_wkt = explicit_wkt or (len(auto_wkt) == 1)
+    if use_wkt:
+        if latitude_column or longitude_column:
+            raise ValueError("use WKT geometry or latitude/longitude, not both")
+        wkt_col = _select_column(
+            columns, location_column, _WKT_ALIASES, "--location-column"
+        )
+        if input_crs is None:
+            raise ValueError("CSV WKT geometry requires --input-crs")
+        try:
+            geometry = table[wkt_col].map(wkt.loads)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid WKT geometry in CSV") from exc
+        return gpd.GeoDataFrame(table.drop(columns=[wkt_col]), geometry=geometry, crs=input_crs)
 
-    if boundary.empty or boundary.crs is None:
-        raise ValueError("boundary must not be empty and must define a CRS")
-    projected_boundary = boundary.to_crs(sample.crs)
-    candidates = gpd.read_file(
-        source, bbox=tuple(projected_boundary.total_bounds), **options
+    if input_crs is not None and input_crs.upper() != "EPSG:4326":
+        raise ValueError("CSV latitude/longitude use EPSG:4326; omit --input-crs")
+    lat_col = _select_column(
+        columns, latitude_column, _LATITUDE_ALIASES, "--latitude-column"
     )
-    if candidates.empty:
-        raise ValueError("population grid does not intersect the requested boundary")
-    valid = candidates.geometry.notna() & ~candidates.geometry.is_empty
-    candidates = candidates.loc[valid].copy()
-    area = projected_boundary.geometry.union_all()
-    representative_points = candidates.geometry.representative_point()
-    result = candidates.loc[representative_points.covered_by(area)].copy()
-    if result.empty:
-        raise ValueError("no population cell centers fall inside the boundary")
-    return result, source_crs
+    lon_col = _select_column(
+        columns, longitude_column, _LONGITUDE_ALIASES, "--longitude-column"
+    )
+    latitude = pd.to_numeric(table[lat_col], errors="coerce")
+    longitude = pd.to_numeric(table[lon_col], errors="coerce")
+    if (
+        latitude.isna().any()
+        or longitude.isna().any()
+        or not np.isfinite(latitude.to_numpy()).all()
+        or not np.isfinite(longitude.to_numpy()).all()
+        or (latitude.abs() > 90).any()
+        or (longitude.abs() > 180).any()
+    ):
+        raise ValueError("CSV contains invalid WGS84 latitude/longitude")
+    geometry = gpd.points_from_xy(longitude, latitude)
+    return gpd.GeoDataFrame(table, geometry=geometry, crs="EPSG:4326")
 
 
 def normalize_population_grid(
     input_path: str | Path,
     output_path: str | Path,
     *,
-    profile: str | None = None,
-    country: str | None = None,
-    source_name: str | None = None,
-    year: int | None = None,
     population_column: str | None = None,
     id_column: str | None = None,
-    estimated_column: str | None = None,
-    boundary: str | Path | None = None,
+    location_column: str | None = None,
+    latitude_column: str | None = None,
+    longitude_column: str | None = None,
+    input_crs: str | None = None,
     city: str | None = None,
     state: str | None = None,
+    country: str | None = None,
+    boundary: str | Path | None = None,
     layer: str | None = None,
     zip_member: str | None = None,
     overwrite: bool = False,
 ) -> dict:
-    """Write a standard spatial grid and a provenance/quality metadata sidecar."""
-    if year is not None and year <= 0:
-        raise ValueError("year must be positive")
-
+    """Produce one GPKG layer containing ID, LOCALIZACAO, POPULACAO only."""
     input_file = Path(input_path).expanduser().resolve()
     output_file = Path(output_path).expanduser().resolve()
     if output_file.suffix.lower() != ".gpkg":
-        raise ValueError("normalized output must be a .gpkg file")
-    if input_file == output_file:
-        raise ValueError("input and output paths must differ")
+        raise ValueError("output must be a .gpkg GeoPackage file")
+    if output_file == input_file:
+        raise ValueError("input and output must differ")
     metadata_file = output_file.with_suffix(".metadata.json")
     if not overwrite and (output_file.exists() or metadata_file.exists()):
-        raise FileExistsError(f"normalized output already exists: {output_file}")
+        raise FileExistsError(f"output already exists: {output_file}")
 
-    source = _vector_source(input_file, zip_member)
-    options = {"layer": layer} if layer else {}
-    sample = gpd.read_file(source, rows=1, **options)
-    available_columns = [column for column in sample.columns if column != "geometry"]
-    detected_profile, population_column, id_column, estimated_column = _infer_schema(
-        available_columns,
-        profile=profile,
-        population_column=population_column,
-        id_column=id_column,
-        estimated_column=estimated_column,
+    source, ext, member = _source(input_file, zip_member)
+    region, boundary_source = _boundary(
+        city=city, state=state, country=country, boundary=boundary
     )
-    defaults = PROFILES[detected_profile]
-    if (
-        country
-        and defaults.country
-        and country.casefold() != defaults.country.casefold()
-    ):
-        raise ValueError(
-            f"country '{country}' conflicts with detected source '{detected_profile}'"
+    grid = _read_input(
+        input_file, source, ext, member, layer=layer, input_crs=input_crs,
+        location_column=location_column, latitude_column=latitude_column,
+        longitude_column=longitude_column, area=region,
+    )
+    if grid.empty:
+        raise ValueError("input grid has no features")
+    if grid.crs is None:
+        raise ValueError("input grid must specify a CRS")
+    source_crs = str(grid.crs)
+    geometry_name = grid.geometry.name
+    columns = [column for column in grid.columns if column != geometry_name]
+    population_name = _select_column(
+        columns, population_column, _POPULATION_ALIASES, "--population-column"
+    )
+    id_name = _select_column(
+        columns, id_column, _ID_ALIASES, "--id-column", required=False
+    )
+
+    valid_geometry = grid.geometry.notna() & ~grid.geometry.is_empty
+    if not valid_geometry.all():
+        raise ValueError("some grid cells lack valid spatial geometry")
+    if region is not None:
+        projected = region.to_crs(grid.crs).geometry.union_all()
+        included = grid.geometry.representative_point().covered_by(projected)
+        grid = grid.loc[included].copy()
+    if grid.empty:
+        raise ValueError("no population cells inside the specified boundary")
+
+    populations = pd.to_numeric(grid[population_name], errors="coerce")
+    if populations.isna().any() or not np.isfinite(populations.to_numpy(dtype=float)).all():
+        raise ValueError("POPULACAO must contain finite numeric values")
+    if (populations < 0).any():
+        raise ValueError("POPULACAO must not be negative")
+
+    if id_name is not None:
+        ids = grid[id_name].astype("string")
+        if ids.isna().any() or ids.str.strip().eq("").any():
+            raise ValueError("ID must not be null or empty")
+        if ids.duplicated().any():
+            raise ValueError("ID values must be unique")
+        generated_ids = False
+    else:
+        # A surrogate is a technical identifier, not a claim about the source.
+        ids = pd.Series(
+            [f"cell-{index + 1:08d}" for index in range(len(grid))],
+            index=grid.index, dtype="string"
         )
-    country = country or defaults.country
-    if not country:
-        raise ValueError("cannot infer country from these columns; specify --country")
-    source_name = source_name or defaults.source
-    # The same fields occur in multiple INSEE vintages. Detection cannot prove
-    # the reference year, so only an explicit profile/year supplies that value.
-    year = year if year is not None else (defaults.year if profile else None)
-    boundary_file = Path(boundary).expanduser().resolve() if boundary else None
-    boundary_geometry, boundary_source = _resolve_boundary(
-        boundary_file=boundary_file, city=city, state=state, country=country
-    )
-    grid, source_crs = _read_grid(source, boundary=boundary_geometry, layer=layer)
-    if grid.empty:
-        raise ValueError("population grid must contain at least one feature")
+        generated_ids = True
 
-    valid = grid.geometry.notna() & ~grid.geometry.is_empty
-    grid = grid.loc[valid].copy()
-    values = pd.to_numeric(grid[population_column], errors="coerce")
-    if values.isna().any() or not np.isfinite(values.to_numpy(dtype=float)).all():
-        raise ValueError("population values must be finite and numeric")
-    if (values < 0).any():
-        raise ValueError("population values must not be negative")
-    identifiers = grid[id_column].astype("string")
-    if identifiers.isna().any() or (identifiers.str.strip() == "").any():
-        raise ValueError("grid identifiers must not be empty")
-    if identifiers.duplicated().any():
-        raise ValueError("grid identifiers must be unique")
-
-    estimate = pd.Series(pd.NA, index=grid.index, dtype="Int64")
-    if estimated_column:
-        raw = grid[estimated_column]
-        numeric = pd.to_numeric(raw, errors="coerce")
-        nonempty = raw.notna()
-        if (nonempty & (~numeric.isin([0, 1]))).any():
-            raise ValueError("estimated flag must contain only 0, 1 or null")
-        estimate = numeric.astype("Int64")
-
-    positive = values > 0
-    removed_zero_cells = int((~positive).sum())
-    grid = grid.loc[positive].copy()
-    identifiers = identifiers.loc[positive]
-    values = values.loc[positive]
-    estimate = estimate.loc[positive]
-    if grid.empty:
-        raise ValueError("population grid has no cells with positive population")
-    # Make positional arrays and geometry align even after bbox filtering.
-    grid = grid.reset_index(drop=True)
-    identifiers = identifiers.reset_index(drop=True)
-    values = values.reset_index(drop=True)
-    estimate = estimate.reset_index(drop=True)
-
-    # Use source-CRS interior points before reprojecting the geometry; this
-    # matters for large or curved geographic cells.
-    points = grid.geometry.representative_point().to_crs("EPSG:4326")
     normalized = gpd.GeoDataFrame(
         {
-            "grid_id": identifiers.to_numpy(dtype=str),
-            "population": values.to_numpy(dtype=float),
-            "country": country,
-            "source": source_name,
-            "source_year": year,
-            "estimated": estimate.to_numpy(dtype="float64", na_value=np.nan),
-            "longitude": points.x.to_numpy(),
-            "latitude": points.y.to_numpy(),
-            "geometry": grid.geometry,
+            "ID": ids.reset_index(drop=True).astype(str),
+            "POPULACAO": populations.reset_index(drop=True).astype(float),
+            "LOCALIZACAO": grid.geometry.reset_index(drop=True),
         },
+        geometry="LOCALIZACAO",
         crs=grid.crs,
     ).to_crs("EPSG:4326")
-    # GPKG supports nullable integer fields. Avoid NaN-to-boolean ambiguity.
-    normalized["estimated"] = pd.Series(
-        pd.array(estimate.to_numpy(), dtype="Int64"), index=normalized.index
-    )
+    normalized = normalized[["ID", "LOCALIZACAO", "POPULACAO"]]
 
-    known = estimate.notna()
-    imputed = estimate == 1
     metadata = {
-        "schema": "cidade15-population-v1",
-        "country": country,
-        "source": source_name,
-        "detected_profile": detected_profile,
-        "profile_detection": "explicit" if profile else "columns",
-        "city": city,
-        "state": state,
-        "source_year": year,
+        "schema": "cidade15-population-v2",
+        "fields": ["ID", "LOCALIZACAO", "POPULACAO"],
         "input": str(input_file),
         "output": str(output_file),
-        "boundary": boundary_source,
         "source_crs": source_crs,
         "output_crs": "EPSG:4326",
-        "population_column": population_column,
-        "id_column": id_column,
-        "estimated_column": estimated_column,
+        "source_population_column": population_name,
+        "source_id_column": id_name,
+        "generated_ids": generated_ids,
+        "boundary": boundary_source,
         "cells": len(normalized),
-        "zero_population_cells_removed": removed_zero_cells,
-        "total_population": float(values.sum()),
-        "estimated_cells": int(imputed.sum()),
-        "population_in_flagged_cells": float(values.loc[imputed.fillna(False)].sum()),
-        "unknown_estimation_cells": int((~known).sum()),
+        "zero_population_cells": int((populations == 0).sum()),
+        "total_population": float(populations.sum()),
     }
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=output_file.parent) as temp_dir:
-        temp_gpkg = Path(temp_dir) / "population.gpkg"
-        temp_metadata = Path(temp_dir) / "population.metadata.json"
-        normalized.to_file(temp_gpkg, layer="population_grid", driver="GPKG")
+    with tempfile.TemporaryDirectory(dir=output_file.parent) as tmp:
+        temp_gpkg = Path(tmp) / "grid.gpkg"
+        temp_metadata = Path(tmp) / "grid.metadata.json"
+        normalized.to_file(
+            temp_gpkg, layer="grade_populacional", driver="GPKG",
+            engine="pyogrio", layer_options={"GEOMETRY_NAME": "LOCALIZACAO"},
+        )
         temp_metadata.write_text(
-            json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
         )
         os.replace(temp_gpkg, output_file)
         os.replace(temp_metadata, metadata_file)
@@ -390,45 +330,40 @@ def normalize_population_grid(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="fifteen-minute-city-normalize-population",
-        description="Normalize international population grids to Cidade15 GeoPackage",
+        description="Normalize population grids to ID, LOCALIZACAO, POPULACAO",
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--profile", choices=tuple(PROFILES))
-    parser.add_argument("--country")
-    parser.add_argument("--source-name")
-    parser.add_argument("--year", type=int)
     parser.add_argument("--population-column")
     parser.add_argument("--id-column")
-    parser.add_argument("--estimated-column")
-    parser.add_argument("--boundary", type=Path)
+    parser.add_argument("--location-column", help="WKT geometry column in CSV")
+    parser.add_argument("--latitude-column")
+    parser.add_argument("--longitude-column")
+    parser.add_argument("--input-crs", help="Required for WKT coordinates in CSV")
     parser.add_argument("--city")
     parser.add_argument("--state")
+    parser.add_argument("--country")
+    parser.add_argument("--boundary", type=Path)
     parser.add_argument("--layer")
-    parser.add_argument("--zip-member", help="Path to the spatial dataset inside a ZIP")
+    parser.add_argument("--zip-member")
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args(argv)
     try:
-        metadata = normalize_population_grid(
-            args.input,
-            args.output,
-            profile=args.profile,
-            country=args.country,
-            source_name=args.source_name,
-            year=args.year,
+        report = normalize_population_grid(
+            args.input, args.output,
             population_column=args.population_column,
             id_column=args.id_column,
-            estimated_column=args.estimated_column,
-            boundary=args.boundary,
-            city=args.city,
-            state=args.state,
-            layer=args.layer,
-            zip_member=args.zip_member,
+            location_column=args.location_column,
+            latitude_column=args.latitude_column,
+            longitude_column=args.longitude_column,
+            input_crs=args.input_crs,
+            city=args.city, state=args.state, country=args.country,
+            boundary=args.boundary, layer=args.layer, zip_member=args.zip_member,
             overwrite=args.overwrite,
         )
     except (OSError, ValueError, FileExistsError) as exc:
         parser.error(str(exc))
-    print(json.dumps(metadata, indent=2, ensure_ascii=False))
+    print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 
 
