@@ -311,9 +311,29 @@ def simulate(
                     simulated["coverage_percentage"] - original["coverage_percentage"]
                 ),
             }
+    # General index: individuals who reach all categories, before and after.
+    overall: dict[str, dict] = {}
+    for strategy, weighted in (("population", True), ("nodes", False)):
+        before = bundle.baseline_metrics[strategy]
+        after = _metrics(bundle, updates, weighted=weighted)
+        overall[strategy] = {
+            "before": {
+                "coverage_percentage": before["overall_coverage_percentage"],
+                "unreachable_percentage": before["overall_unreachable_percentage"],
+            },
+            "after": {
+                "coverage_percentage": after["overall_coverage_percentage"],
+                "unreachable_percentage": after["overall_unreachable_percentage"],
+            },
+            "coverage_delta_percentage_points": (
+                after["overall_coverage_percentage"]
+                - before["overall_coverage_percentage"]
+            ),
+        }
     return {
         "execution_id": bundle.metadata["execution_id"],
         "added_services": placed,
         "results": results,
+        "overall": overall,
         "processing_time_ms": round((time.perf_counter() - started) * 1000, 3),
     }

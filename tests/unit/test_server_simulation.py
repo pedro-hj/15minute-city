@@ -161,3 +161,20 @@ def test_api_requires_prepared_package(monkeypatch):
     with pytest.raises(HTTPException) as error:
         routes.simulate_execution(7, scenario, object())
     assert error.value.status_code == 404
+
+
+def test_simulation_reports_overall_before_and_after():
+    result = simulate(
+        sample_bundle(),
+        [
+            {"category": "health", "latitude": 0, "longitude": 0.01},
+            {"category": "food", "latitude": 0, "longitude": 0},
+        ],
+    )
+
+    population = result["overall"]["population"]
+    assert population["before"]["coverage_percentage"] == 0
+    assert population["after"]["coverage_percentage"] == 100
+    assert population["coverage_delta_percentage_points"] == 100
+    nodes = result["overall"]["nodes"]
+    assert nodes["after"]["coverage_percentage"] == pytest.approx(200 / 3)

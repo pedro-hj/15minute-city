@@ -141,8 +141,25 @@ class SimulationPlacedService(BaseModel):
     snap_distance_m: float
 
 
+class SimulationOverallMetrics(BaseModel):
+    coverage_percentage: float
+    unreachable_percentage: float
+
+
+class SimulationOverallComparison(BaseModel):
+    before: SimulationOverallMetrics
+    after: SimulationOverallMetrics
+    coverage_delta_percentage_points: float
+
+
+class SimulationOverallResults(BaseModel):
+    population: SimulationOverallComparison
+    nodes: SimulationOverallComparison
+
+
 class SimulationResponse(BaseModel):
     execution_id: int
     added_services: list[SimulationPlacedService]
     results: dict[str, SimulationCategoryResults]
+    overall: SimulationOverallResults
     processing_time_ms: float
