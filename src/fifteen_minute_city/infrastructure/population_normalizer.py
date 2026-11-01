@@ -47,14 +47,17 @@ def _vector_source(path: Path, zip_member: str | None) -> str:
         if zip_member is not None:
             raise ValueError("--zip-member requires a ZIP input")
         if path.suffix.lower() not in _VECTOR_EXTENSIONS:
-            raise ValueError("unsupported population file; use GPKG, SHP, GeoJSON or ZIP")
+            raise ValueError(
+                "unsupported population file; use GPKG, SHP, GeoJSON or ZIP"
+            )
         return str(path)
 
     with ZipFile(path) as archive:
         members = [
             name
             for name in archive.namelist()
-            if not name.endswith("/") and Path(name).suffix.lower() in _VECTOR_EXTENSIONS
+            if not name.endswith("/")
+            and Path(name).suffix.lower() in _VECTOR_EXTENSIONS
         ]
     if zip_member is not None:
         if zip_member not in members:
@@ -153,7 +156,9 @@ def normalize_population_grid(
         required_columns.add(estimated_column)
     missing = required_columns.difference(grid.columns)
     if missing:
-        raise ValueError(f"population grid is missing columns: {', '.join(sorted(missing))}")
+        raise ValueError(
+            f"population grid is missing columns: {', '.join(sorted(missing))}"
+        )
 
     valid = grid.geometry.notna() & ~grid.geometry.is_empty
     grid = grid.loc[valid].copy()
@@ -232,7 +237,7 @@ def normalize_population_grid(
         "zero_population_cells_removed": removed_zero_cells,
         "total_population": float(values.sum()),
         "estimated_cells": int(imputed.sum()),
-        "estimated_population": float(values.loc[imputed.fillna(False)].sum()),
+        "population_in_flagged_cells": float(values.loc[imputed.fillna(False)].sum()),
         "unknown_estimation_cells": int((~known).sum()),
     }
 
