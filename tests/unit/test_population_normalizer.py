@@ -1,6 +1,8 @@
+import sqlite3
 from zipfile import ZipFile
 
 import geopandas as gpd
+import pandas as pd
 import pytest
 from shapely.geometry import box
 
@@ -10,13 +12,12 @@ from fifteen_minute_city.infrastructure.population_normalizer import (
 )
 
 
-def _insee_grid(tmp_path):
-    source = tmp_path / "insee.gpkg"
+def _grid(tmp_path, *, population_col="ind", id_col="idcar_200m"):
+    source = tmp_path / "grid.gpkg"
     gpd.GeoDataFrame(
         {
-            "idcar_200m": ["west", "east", "empty"],
-            "ind": [80.0, 20.0, 0.0],
-            "i_est_200": [0, 1, 0],
+            id_col: ["west", "east", "empty"],
+            population_col: [80.0, 20.0, 0.0],
             "geometry": [
                 box(4.79, 45.72, 4.80, 45.73),
                 box(4.89, 45.72, 4.90, 45.73),
@@ -28,274 +29,246 @@ def _insee_grid(tmp_path):
     return source
 
 
-def test_insee_estimation_and_boundary(tmp_path):
-    source = _insee_grid(tmp_path)
-    boundary = tmp_path / "lyon.geojson"
-    gpd.GeoDataFrame(
-        {"geometry": [box(4.77, 45.70, 4.82, 45.75)]}, crs="EPSG:4326"
-    ).to_file(boundary, driver="GeoJSON")
-    target = tmp_path / "normalized.gpkg"
-    metadata = normalize_population_grid(source, target, boundary=boundary)
-    grid = gpd.read_file(target)
-    assert len(grid) == 1
-    assert grid.iloc[0]["grid_id"] == "west"
-    assert grid.iloc[0]["population"] == 80
-    assert grid.iloc[0]["estimated"] == 0
-    assert grid.iloc[0]["country"] == "France"
-    assert grid.iloc[0]["source_year"] is None
-    assert metadata["total_population"] == 80
-    assert metadata["source_crs"] == "EPSG:4326"
-    assert target.with_suffix(".metadata.json").exists()
-    assert grid.crs.to_epsg() == 4326
-
-
-def test_boundary_filter_preserves_row_alignment(tmp_path):
-    source = _insee_grid(tmp_path)
-    boundary = tmp_path / "east.geojson"
-    gpd.GeoDataFrame(
-        {"geometry": [box(4.88, 45.71, 4.92, 45.74)]}, crs="EPSG:4326"
-    ).to_file(boundary, driver="GeoJSON")
-    target = tmp_path / "east.gpkg"
-    normalize_population_grid(source, target, boundary=boundary)
-    grid = gpd.read_file(target)
-    assert len(grid) == 1
-    assert grid.iloc[0]["grid_id"] == "east"
-    assert grid.iloc[0]["population"] == 20
-    assert grid.iloc[0]["estimated"] == 1
-    assert grid.iloc[0]["longitude"] == pytest.approx(4.895)
-
-
-def test_insee_projected_grid_is_reprojected_to_wgs84(tmp_path):
-    source = _insee_grid(tmp_path)
-    projected = tmp_path / "projected.gpkg"
-    gpd.read_file(source).to_crs("EPSG:3035").to_file(projected, driver="GPKG")
-    target = tmp_path / "wgs84.gpkg"
-    metadata = normalize_population_grid(projected, target)
-    grid = gpd.read_file(target)
-    assert grid.crs.to_epsg() == 4326
-    assert grid.loc[0, "longitude"] == pytest.approx(4.795, abs=0.001)
-    assert grid.loc[0, "latitude"] == pytest.approx(45.725, abs=0.001)
-    assert metadata["source_crs"] == "EPSG:3035"
-
-
-def test_insee_estimates_are_reported(tmp_path):
-    source = _insee_grid(tmp_path)
-    target = tmp_path / "normalized.gpkg"
-    metadata = normalize_population_grid(source, target)
-    assert metadata["cells"] == 2
-    assert metadata["zero_population_cells_removed"] == 1
-    assert metadata["estimated_cells"] == 1
-    assert metadata["population_in_flagged_cells"] == 20
-    assert metadata["total_population"] == 100
-
-
-def test_ibge_zip_is_supported(tmp_path):
-    shape = tmp_path / "shape"
-    shape.mkdir()
-    shp = shape / "grade.shp"
-    gpd.GeoDataFrame(
-        {
-            "ID_UNICO": ["br-01", "br-02"],
-            "TOTAL": [25, 75],
-            "geometry": [
-                box(-46.001, -24.001, -45.999, -23.999),
-                box(-45.991, -24.001, -45.989, -23.999),
-            ],
-        },
-        crs="EPSG:4326",
-    ).to_file(shp)
-    source = tmp_path / "ibge.zip"
-    with ZipFile(source, "w") as zip_file:
-        for part in shape.iterdir():
-            zip_file.write(part, arcname=part.name)
-    target = tmp_path / "normalized.gpkg"
-    metadata = normalize_population_grid(source, target)
-    assert metadata["country"] == "Brazil"
-    assert metadata["unknown_estimation_cells"] == 2
-    assert gpd.read_file(target)["population"].sum() == 100
-
-
-def test_zip_multi_geography_requires_explicit_member(tmp_path):
-    source = _insee_grid(tmp_path)
-    archive = tmp_path / "france.zip"
-    with ZipFile(archive, "w") as zip_file:
-        zip_file.write(source, arcname="metro/insee.gpkg")
-        zip_file.write(source, arcname="reunion/insee.gpkg")
-    with pytest.raises(ValueError, match="--zip-member"):
-        normalize_population_grid(archive, tmp_path / "normalized.gpkg")
-    metadata = normalize_population_grid(
-        archive,
-        tmp_path / "normalized.gpkg",
-        zip_member="metro/insee.gpkg",
-    )
-    assert metadata["cells"] == 2
-
-
-@pytest.mark.parametrize(
-    ("values", "error"),
-    [([-1, 5], "must not be negative"), ([float("nan"), 5], "finite and numeric")],
-)
-def test_invalid_population_is_rejected(tmp_path, values, error):
-    source = tmp_path / "custom.geojson"
-    gpd.GeoDataFrame(
-        {
-            "cell": ["a", "b"],
-            "head_count": values,
-            "geometry": [box(0, 0, 1, 1), box(1, 0, 2, 1)],
-        },
-        crs="EPSG:4326",
-    ).to_file(source, driver="GeoJSON")
-    with pytest.raises(ValueError, match=error):
-        normalize_population_grid(
-            source,
-            tmp_path / "out.gpkg",
-            country="X",
-            population_column="head_count",
-            id_column="cell",
-        )
-
-
-def test_output_is_not_overwritten_by_default(tmp_path):
-    source = _insee_grid(tmp_path)
-    target = tmp_path / "normalized.gpkg"
-    normalize_population_grid(source, target)
-    with pytest.raises(FileExistsError):
-        normalize_population_grid(source, target)
-
-
-def test_auto_detect_insee_does_not_invent_reference_year(tmp_path):
-    source = _insee_grid(tmp_path)
-    output = tmp_path / "france.gpkg"
+def test_exact_three_fields_and_geometry_name_in_geopackage(tmp_path):
+    source = _grid(tmp_path)
+    output = tmp_path / "normalizado.gpkg"
     metadata = normalize_population_grid(source, output)
-    assert metadata["detected_profile"] == "insee-filosofi-2021"
-    assert metadata["profile_detection"] == "columns"
-    assert metadata["source_year"] is None
-    assert gpd.read_file(output)["country"].iloc[0] == "France"
+
+    with sqlite3.connect(output) as connection:
+        cols = connection.execute(
+            "SELECT column_name FROM gpkg_geometry_columns"
+        ).fetchall()
+        table = connection.execute(
+            "PRAGMA table_info(grade_populacional)"
+        ).fetchall()
+    assert cols == [("LOCALIZACAO",)]
+    assert {row[1] for row in table} == {"fid", "LOCALIZACAO", "ID", "POPULACAO"}
+
+    # GeoPandas uses the conventional attribute 'geometry' when reading GPKG.
+    grid = gpd.read_file(output)
+    assert set(grid.columns) == {"ID", "POPULACAO", "geometry"}
+    assert grid.crs.to_epsg() == 4326
+    assert grid["ID"].tolist() == ["west", "east", "empty"]
+    assert grid["POPULACAO"].tolist() == [80.0, 20.0, 0.0]
+    assert metadata["fields"] == ["ID", "LOCALIZACAO", "POPULACAO"]
+    assert metadata["total_population"] == 100.0
+    assert metadata["zero_population_cells"] == 1
+    assert output.with_suffix(".metadata.json").exists()
 
 
-def test_explicit_insee_profile_preserves_configured_year(tmp_path):
-    metadata = normalize_population_grid(
-        _insee_grid(tmp_path),
-        tmp_path / "france.gpkg",
-        profile="insee-filosofi-2021",
-    )
-    assert metadata["source_year"] == 2021
-    assert metadata["profile_detection"] == "explicit"
+def test_ibge_field_names_are_generic_aliases(tmp_path):
+    source = _grid(tmp_path, population_col="TOTAL", id_col="ID_UNICO")
+    report = normalize_population_grid(source, tmp_path / "ibge.gpkg")
+    assert report["source_id_column"] == "ID_UNICO"
+    assert report["source_population_column"] == "TOTAL"
 
 
-def test_auto_geocode_city_without_boundary_file(tmp_path, monkeypatch):
+def test_city_geocodes_without_country_or_boundary(tmp_path, monkeypatch):
     calls = []
 
     def fake_geocode(place):
         calls.append(place)
         return gpd.GeoDataFrame(
-            {"geometry": [box(4.77, 45.70, 4.82, 45.75)]}, crs="EPSG:4326"
+            {"geometry": [box(4.77, 45.70, 4.82, 45.75)]},
+            crs="EPSG:4326",
         )
 
     monkeypatch.setattr(population_normalizer.ox, "geocode_to_gdf", fake_geocode)
     output = tmp_path / "lyon.gpkg"
-    metadata = normalize_population_grid(
-        _insee_grid(tmp_path), output, city="Lyon", year=2021
-    )
-    assert calls == [{"city": "Lyon", "country": "France"}]
-    assert metadata["city"] == "Lyon"
-    assert metadata["boundary"].startswith("geocoded:")
-    assert metadata["total_population"] == 80
-    assert gpd.read_file(output)["grid_id"].tolist() == ["west"]
+    report = normalize_population_grid(_grid(tmp_path), output, city="Lyon")
+    assert calls == [{"city": "Lyon"}]
+    assert report["boundary"].startswith("geocoded:")
+    assert gpd.read_file(output)["ID"].tolist() == ["west"]
 
 
-def test_generic_aliases_work_without_profile(tmp_path):
-    source = tmp_path / "generic.geojson"
-    gpd.GeoDataFrame(
-        {
-            "cell_id": ["A", "B"],
-            "residents": [12, 18],
-            "geometry": [box(0, 0, 1, 1), box(1, 0, 2, 1)],
-        },
-        crs="EPSG:4326",
-    ).to_file(source, driver="GeoJSON")
-    metadata = normalize_population_grid(
-        source, tmp_path / "normalized.gpkg", country="Portugal"
-    )
-    assert metadata["detected_profile"] == "custom"
-    assert metadata["population_column"] == "residents"
-    assert metadata["id_column"] == "cell_id"
-    assert metadata["total_population"] == 30
-
-
-def test_ambiguous_generic_fields_require_override(tmp_path):
-    source = tmp_path / "ambiguous.geojson"
-    gpd.GeoDataFrame(
-        {
-            "cell_id": ["A"],
-            "pop": [3],
-            "residents": [4],
-            "geometry": [box(0, 0, 1, 1)],
-        },
-        crs="EPSG:4326",
-    ).to_file(source, driver="GeoJSON")
-    with pytest.raises(ValueError, match="--population-column"):
-        normalize_population_grid(
-            source, tmp_path / "normalized.gpkg", country="Portugal"
-        )
-    metadata = normalize_population_grid(
-        source,
-        tmp_path / "normalized.gpkg",
-        country="Portugal",
-        population_column="residents",
-    )
-    assert metadata["total_population"] == 4
-
-
-def test_unsupported_unknown_columns_are_not_guessed(tmp_path):
-    source = tmp_path / "unknown.geojson"
-    gpd.GeoDataFrame(
-        {"zone": ["A"], "volume": [13], "geometry": [box(0, 0, 1, 1)]},
-        crs="EPSG:4326",
-    ).to_file(source, driver="GeoJSON")
-    with pytest.raises(ValueError, match="--population-column"):
-        normalize_population_grid(source, tmp_path / "out.gpkg", country="Portugal")
-
-
-def test_geocode_with_state_and_explicit_country(tmp_path, monkeypatch):
+def test_optional_country_and_state_disambiguate_city(tmp_path, monkeypatch):
     seen = []
 
     def fake_geocode(place):
         seen.append(place)
         return gpd.GeoDataFrame(
-            {"geometry": [box(-46.1, -24.1, -45.9, -23.9)]}, crs="EPSG:4326"
+            {"geometry": [box(4.77, 45.70, 4.82, 45.75)]},
+            crs="EPSG:4326",
         )
 
     monkeypatch.setattr(population_normalizer.ox, "geocode_to_gdf", fake_geocode)
-    source = tmp_path / "ibge.geojson"
+    normalize_population_grid(
+        _grid(tmp_path), tmp_path / "lyon.gpkg",
+        city="Lyon", state="Auvergne-Rhone-Alpes", country="France",
+    )
+    assert seen == [{
+        "city": "Lyon",
+        "state": "Auvergne-Rhone-Alpes",
+        "country": "France",
+    }]
+
+
+def test_manual_boundary_keeps_only_selected_centers(tmp_path):
+    area = tmp_path / "boundary.geojson"
+    gpd.GeoDataFrame(
+        {"geometry": [box(4.88, 45.70, 4.92, 45.75)]}, crs="EPSG:4326"
+    ).to_file(area, driver="GeoJSON")
+    output = tmp_path / "east.gpkg"
+    normalize_population_grid(_grid(tmp_path), output, boundary=area)
+    assert gpd.read_file(output)["ID"].tolist() == ["east"]
+
+
+def test_projected_source_is_reprojected(tmp_path):
+    source = _grid(tmp_path)
+    projected = tmp_path / "projected.gpkg"
+    gpd.read_file(source).to_crs("EPSG:3035").to_file(projected, driver="GPKG")
+    output = tmp_path / "output.gpkg"
+    report = normalize_population_grid(projected, output)
+    assert gpd.read_file(output).crs.to_epsg() == 4326
+    assert report["source_crs"] == "EPSG:3035"
+
+
+def test_zip_shapefile_source(tmp_path):
+    shape_folder = tmp_path / "shapefile"
+    shape_folder.mkdir()
+    shapefile = shape_folder / "grid.shp"
     gpd.GeoDataFrame(
         {
-            "ID_UNICO": ["a"],
-            "TOTAL": [25],
-            "geometry": [box(-46.0, -24.0, -45.99, -23.99)],
+            "ID_UNICO": ["a", "b"],
+            "TOTAL": [11, 19],
+            "geometry": [box(1, 1, 2, 2), box(2, 1, 3, 2)],
+        },
+        crs="EPSG:4326",
+    ).to_file(shapefile, driver="ESRI Shapefile")
+    archive = tmp_path / "input.zip"
+    with ZipFile(archive, "w") as zipper:
+        for file in shape_folder.iterdir():
+            zipper.write(file, arcname=file.name)
+    output = tmp_path / "output.gpkg"
+    normalize_population_grid(archive, output)
+    assert gpd.read_file(output)["POPULACAO"].sum() == 30
+
+
+def test_zip_multiple_sources_needs_member(tmp_path):
+    source = _grid(tmp_path)
+    archive = tmp_path / "two.zip"
+    with ZipFile(archive, "w") as zipper:
+        zipper.write(source, arcname="one.gpkg")
+        zipper.write(source, arcname="two.gpkg")
+    with pytest.raises(ValueError, match="--zip-member"):
+        normalize_population_grid(archive, tmp_path / "out.gpkg")
+    normalize_population_grid(
+        archive, tmp_path / "out.gpkg", zip_member="one.gpkg"
+    )
+    assert len(gpd.read_file(tmp_path / "out.gpkg")) == 3
+
+
+def test_csv_with_latitude_longitude(tmp_path):
+    source = tmp_path / "points.csv"
+    pd.DataFrame(
+        {
+            "CELL_CODE": ["001", "002"],
+            "RESIDENTES": [12, 18],
+            "latitude": [-23.96, -23.97],
+            "longitude": [-46.33, -46.32],
+        }
+    ).to_csv(source, index=False)
+    output = tmp_path / "output.gpkg"
+    normalize_population_grid(source, output)
+    grid = gpd.read_file(output)
+    assert grid["ID"].tolist() == ["001", "002"]
+    assert grid["POPULACAO"].sum() == 30
+    assert all(grid.geometry.geom_type == "Point")
+
+
+def test_csv_with_wkt_geometry_and_crs(tmp_path):
+    source = tmp_path / "polygons.csv"
+    pd.DataFrame(
+        {
+            "ID": ["ABC"], "POPULATION": [7],
+            "WKT": ["POLYGON ((0 0, 0 1, 1 1, 1 0, 0 0))"],
+        }
+    ).to_csv(source, index=False)
+    with pytest.raises(ValueError, match="--input-crs"):
+        normalize_population_grid(source, tmp_path / "out.gpkg")
+    normalize_population_grid(
+        source, tmp_path / "out.gpkg", input_crs="EPSG:4326"
+    )
+    assert gpd.read_file(tmp_path / "out.gpkg").geometry.iloc[0].geom_type == "Polygon"
+
+
+def test_generates_technical_id_when_missing(tmp_path):
+    source = tmp_path / "no_id.geojson"
+    gpd.GeoDataFrame(
+        {"population": [10], "geometry": [box(0, 0, 1, 1)]},
+        crs="EPSG:4326",
+    ).to_file(source, driver="GeoJSON")
+    report = normalize_population_grid(source, tmp_path / "out.gpkg")
+    assert report["generated_ids"] is True
+    assert gpd.read_file(tmp_path / "out.gpkg")["ID"].tolist() == ["cell-00000001"]
+
+
+def test_unknown_column_requires_explicit_mapping(tmp_path):
+    source = tmp_path / "unknown.geojson"
+    gpd.GeoDataFrame(
+        {"cell": ["A"], "qty_people": [14], "geometry": [box(0, 0, 1, 1)]},
+        crs="EPSG:4326",
+    ).to_file(source, driver="GeoJSON")
+    with pytest.raises(ValueError, match="--population-column"):
+        normalize_population_grid(source, tmp_path / "out.gpkg")
+    report = normalize_population_grid(
+        source, tmp_path / "out.gpkg",
+        id_column="cell", population_column="qty_people",
+    )
+    assert report["total_population"] == 14
+
+
+def test_ambiguous_population_columns_require_override(tmp_path):
+    source = tmp_path / "ambiguous.geojson"
+    gpd.GeoDataFrame(
+        {
+            "ID": ["a"], "POP": [1], "TOTAL": [3],
+            "geometry": [box(0, 0, 1, 1)],
         },
         crs="EPSG:4326",
     ).to_file(source, driver="GeoJSON")
-    metadata = normalize_population_grid(
-        source, tmp_path / "out.gpkg", city="Santos", state="São Paulo"
+    with pytest.raises(ValueError, match="--population-column"):
+        normalize_population_grid(source, tmp_path / "out.gpkg")
+    normalize_population_grid(
+        source, tmp_path / "out.gpkg", population_column="TOTAL"
     )
-    assert seen == [{"city": "Santos", "country": "Brazil", "state": "São Paulo"}]
-    assert metadata["country"] == "Brazil"
+    assert gpd.read_file(tmp_path / "out.gpkg")["POPULACAO"].sum() == 3
 
 
-def test_city_and_boundary_cannot_be_combined(tmp_path):
-    source = _insee_grid(tmp_path)
+def test_negative_population_is_rejected(tmp_path):
+    source = tmp_path / "bad.geojson"
+    gpd.GeoDataFrame(
+        {"ID": ["a"], "population": [-1], "geometry": [box(0, 0, 1, 1)]},
+        crs="EPSG:4326",
+    ).to_file(source, driver="GeoJSON")
+    with pytest.raises(ValueError, match="negative"):
+        normalize_population_grid(source, tmp_path / "out.gpkg")
+
+
+def test_duplicate_ids_are_rejected(tmp_path):
+    source = tmp_path / "duplicates.geojson"
+    gpd.GeoDataFrame(
+        {
+            "ID": ["same", "same"], "population": [1, 2],
+            "geometry": [box(0, 0, 1, 1), box(2, 0, 3, 1)],
+        },
+        crs="EPSG:4326",
+    ).to_file(source, driver="GeoJSON")
+    with pytest.raises(ValueError, match="unique"):
+        normalize_population_grid(source, tmp_path / "out.gpkg")
+
+
+def test_prevents_accidental_overwriting(tmp_path):
+    source = _grid(tmp_path)
+    output = tmp_path / "out.gpkg"
+    normalize_population_grid(source, output)
+    with pytest.raises(FileExistsError):
+        normalize_population_grid(source, output)
+
+
+def test_cannot_mix_city_and_boundary(tmp_path):
+    source = _grid(tmp_path)
     with pytest.raises(ValueError, match="either --boundary or --city"):
         normalize_population_grid(
             source, tmp_path / "out.gpkg", city="Lyon", boundary=source
         )
-
-
-def test_unknown_country_requires_country_argument(tmp_path):
-    source = tmp_path / "generic.geojson"
-    gpd.GeoDataFrame(
-        {"cell_id": ["A"], "residents": [11], "geometry": [box(0, 0, 1, 1)]},
-        crs="EPSG:4326",
-    ).to_file(source, driver="GeoJSON")
-    with pytest.raises(ValueError, match="--country"):
-        normalize_population_grid(source, tmp_path / "out.gpkg")
