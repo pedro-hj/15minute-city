@@ -29,6 +29,7 @@ dependencies = [
 [project.scripts]
 fifteen-minute-city = "fifteen_minute_city.main:main"
 fifteen-minute-city-api = "fifteen_minute_city.api.app:run"
+fifteen-minute-city-normalize-population = "fifteen_minute_city.infrastructure.population_normalizer:main"
 
 [build-system]
 requires = ["uv_build>=0.11.24,<0.12.0"]
