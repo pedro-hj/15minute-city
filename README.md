@@ -20,39 +20,28 @@ cd 15minute-city
 uv sync
 ```
 
-## Normalização populacional universal
+## Normalização de grades populacionais
 
-O normalizador converte arquivos vetoriais (GeoPackage, Shapefile, GeoJSON, ZIP)
-e CSV com localização geográfica para **um único contrato espacial**:
-
-- `ID` — identificador da unidade populacional;
-- `LOCALIZACAO` — geometria da unidade (polígono ou ponto, EPSG:4326);
-- `POPULACAO` — quantidade de habitantes.
-
-Você indica os campos da origem diretamente. O programa não exige perfil,
-não adivinha colunas e não gera identificadores.
+O normalizador converte grades geográficas, como Shapefile ou GeoPackage,
+para um único formato com **ID**, **LOCATION** (geometria) e **POPULATION**
+(habitantes). Basta informar as colunas de ID e população; o sistema encontra
+automaticamente a geometria e preserva o CRS original.
 
 ```bash
 uv run fifteen-minute-city-normalize-population \
-  --input data/input/grade.zip \
-  --id-column ID_UNICO \
-  --location-column geometry \
-  --population-column TOTAL \
-  --output data/normalized/grade.gpkg
+  --input data/input/france/france_metro/carreaux_200m_met.shp \
+  --id-column idcar_200m \
+  --population-column ind \
+  --output data/normalized/france.gpkg
 ```
 
-Os nomes `ID_UNICO` e `TOTAL` são exemplos; use os campos da sua grade.
-Em arquivos vetoriais, `geometry` representa a geometria nativa e pode ser
-omitido. Em CSV, informe uma coluna WKT e seu CRS, ou latitude/longitude.
-`--city` é opcional e permite recortar a grade pelo município.
-Para ZIPs com várias fontes ou arquivos com várias camadas, use
-`--zip-member` ou `--layer`, respectivamente.
+Para utilizar o arquivo na CLI principal, informe
+`--population-grid data/normalized/france.gpkg --population-column POPULATION --population-id-column ID`.
+O recorte municipal e as reprojeções necessárias ao roteamento são feitos na
+CLI principal, não no normalizador.
 
-O GeoPackage de saída mantém as três colunas padronizadas. Um JSON separado
-registra procedência, mapeamento e totais. Na CLI principal, o comando sempre usa
-`--population-grid data/normalized/grade.gpkg --population-column POPULACAO --population-id-column ID`.
-
-Veja **[normalizador e formatos aceitos](docs/POPULATION_NORMALIZATION.md)**.
+Consulte o **[manual de normalização](docs/POPULATION_NORMALIZATION.md)**
+para os formatos aceitos e exemplos adicionais.
 
 ## Execução
 
