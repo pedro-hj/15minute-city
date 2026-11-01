@@ -66,12 +66,8 @@ def test_response_includes_only_affected_category_for_both_strategies():
     assert population["after"]["coverage_percentage"] == 100
     assert population["coverage_delta_percentage_points"] == 50
     assert population["after"]["mean_travel_time_minutes"] == 0
-    assert health["nodes"]["before"]["coverage_percentage"] == pytest.approx(
-        100 / 3
-    )
-    assert health["nodes"]["after"]["coverage_percentage"] == pytest.approx(
-        200 / 3
-    )
+    assert health["nodes"]["before"]["coverage_percentage"] == pytest.approx(100 / 3)
+    assert health["nodes"]["after"]["coverage_percentage"] == pytest.approx(200 / 3)
     assert result["added_services"][0]["snap_distance_m"] == 0
     assert result["processing_time_ms"] >= 0
     np.testing.assert_array_equal(bundle.baseline, baseline_before)
@@ -138,8 +134,7 @@ def test_api_routes_server_side_and_removes_package_download(monkeypatch):
     )
     result = routes.simulate_execution(7, scenario, object())
     assert (
-        result["results"]["health"]["population"]["after"]["coverage_percentage"]
-        == 100
+        result["results"]["health"]["population"]["after"]["coverage_percentage"] == 100
     )
     SimulationResponse.model_validate(result)
 
