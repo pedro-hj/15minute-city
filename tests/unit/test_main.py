@@ -194,9 +194,7 @@ def fake_cli_region(monkeypatch):
             actions.append("analysis_completed")
             return SimpleNamespace(
                 population_report=SimpleNamespace(
-                    categories={
-                        "culture": SimpleNamespace(coverage_percentage=23.0)
-                    },
+                    categories={"culture": SimpleNamespace(coverage_percentage=23.0)},
                     overall_coverage_percentage=18.0,
                 )
             )
@@ -230,12 +228,17 @@ def test_main_automatically_exports_fmc1_after_completed_analysis(
     assert (
         cli.main(
             [
-                "--city", "Santos",
-                "--pbf", "brazil.osm.pbf",
-                "--population-grid", "grid.zip",
-                "--cache-dir", str(cache_dir),
+                "--city",
+                "Santos",
+                "--pbf",
+                "brazil.osm.pbf",
+                "--population-grid",
+                "grid.zip",
+                "--cache-dir",
+                str(cache_dir),
                 "--enable-db",
-                "--output", str(result_file),
+                "--output",
+                str(result_file),
             ]
         )
         == 0
@@ -268,10 +271,14 @@ def test_main_without_database_does_not_export_fmc1(
     assert (
         cli.main(
             [
-                "--city", "Santos",
-                "--pbf", "brazil.osm.pbf",
-                "--population-grid", "grid.zip",
-                "--output", str(tmp_path / "result.json"),
+                "--city",
+                "Santos",
+                "--pbf",
+                "brazil.osm.pbf",
+                "--population-grid",
+                "grid.zip",
+                "--output",
+                str(tmp_path / "result.json"),
             ]
         )
         == 0
@@ -294,11 +301,15 @@ def test_fmc_failure_keeps_completed_analysis_result(
     with pytest.raises(RuntimeError, match="saved successfully, but FMC1"):
         cli.main(
             [
-                "--city", "Santos",
-                "--pbf", "brazil.osm.pbf",
-                "--population-grid", "grid.zip",
+                "--city",
+                "Santos",
+                "--pbf",
+                "brazil.osm.pbf",
+                "--population-grid",
+                "grid.zip",
                 "--enable-db",
-                "--output", str(output),
+                "--output",
+                str(output),
             ]
         )
     assert output.is_file()
