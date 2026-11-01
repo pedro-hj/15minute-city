@@ -137,7 +137,10 @@ def test_api_routes_server_side_and_removes_package_download(monkeypatch):
         {"services": [{"category": "health", "latitude": 0, "longitude": 0.01}]}
     )
     result = routes.simulate_execution(7, scenario, object())
-    assert result["results"]["health"]["population"]["after"]["coverage_percentage"] == 100
+    assert (
+        result["results"]["health"]["population"]["after"]["coverage_percentage"]
+        == 100
+    )
     SimulationResponse.model_validate(result)
 
     invalid = SimulationRequest.model_validate(
