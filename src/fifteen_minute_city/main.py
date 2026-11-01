@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from fifteen_minute_city.application.analysis_runner import AnalysisOutcome
-from fifteen_minute_city.application.simulation_package import export_completed_execution
+from fifteen_minute_city.application.simulation_package import (
+    export_completed_execution,
+)
 from fifteen_minute_city.constants import SERVICE_CATEGORIES
 from fifteen_minute_city.core.modules.locales import Region
 from fifteen_minute_city.db.connection import session_scope
