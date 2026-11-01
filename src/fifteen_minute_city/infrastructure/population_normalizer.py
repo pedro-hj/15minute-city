@@ -24,9 +24,7 @@ def normalize(file, id_column, population_column, output):
     if grid.empty:
         raise ValueError("The input grid is empty")
     if grid.crs is None:
-        raise ValueError(
-            "The input grid must have a coordinate reference system (CRS)"
-        )
+        raise ValueError("The input grid must have a coordinate reference system (CRS)")
 
     for name in (id_column, population_column):
         if name not in grid.columns or name == grid.geometry.name:
@@ -39,9 +37,10 @@ def normalize(file, id_column, population_column, output):
         raise ValueError("IDs must be nonempty and unique")
 
     population = pd.to_numeric(grid[population_column], errors="raise")
-    if population.isna().any() or not np.isfinite(
-        population.to_numpy(dtype=float)
-    ).all():
+    if (
+        population.isna().any()
+        or not np.isfinite(population.to_numpy(dtype=float)).all()
+    ):
         raise ValueError("Population must contain finite numbers")
     if (population < 0).any():
         raise ValueError("Population cannot be negative")

@@ -56,9 +56,7 @@ def test_normalizes_french_and_brazilian_grids(
     assert saved["ID"].tolist() == ["001", "002", "003"]
     assert saved["POPULATION"].tolist() == [10, 2.5, 0]
     with sqlite3.connect(output) as db:
-        column = db.execute(
-            "SELECT column_name FROM gpkg_geometry_columns"
-        ).fetchone()
+        column = db.execute("SELECT column_name FROM gpkg_geometry_columns").fetchone()
     assert column == ("LOCATION",)
 
 
