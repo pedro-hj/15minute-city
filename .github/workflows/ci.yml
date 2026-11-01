@@ -48,6 +48,9 @@ jobs:
       - name: Run tests
         run: uv run pytest -m "not benchmark"
 
+      - name: Test portable JavaScript simulation engine
+        run: node --test client/tests/*.mjs
+
       - name: Verify offline migration SQL
         env:
           DATABASE_URL: postgresql+psycopg://user:pass@localhost/db

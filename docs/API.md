@@ -2,7 +2,7 @@
 
 ## 1. Catálogo completo de endpoints
 
-Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são substituídos por valores reais.
+As rotas de consulta utilizam `GET`; simulações utilizam `POST`. Os parâmetros entre chaves são substituídos por valores reais.
 
 | Método e caminho | Finalidade |
 | --- | --- |
@@ -13,6 +13,7 @@ Todos os caminhos abaixo usam o método `GET`. Os parâmetros entre chaves são 
 | `GET /api/v1/categories` | Lista as categorias registradas. |
 | `GET /api/v1/cities/{city_id}/executions` | Lista execuções concluídas do município. |
 | `GET /api/v1/executions/{execution_id}` | Retorna um resultado detalhado por execução concluída. |
+| `POST /api/v1/executions/{execution_id}/simulate` | Adiciona serviços hipotéticos e retorna os indicadores recalculados pela VPS, sem modificar a análise original. |
 | `GET /api/v1/cities/{city_id}/latest` | Retorna o resultado detalhado da execução concluída mais recente. |
 | `GET /api/v1/cities/{city_id}/latest/{strategy}` | Retorna o relatório completo de uma estratégia. |
 | `GET /api/v1/cities/{city_id}/latest/{strategy}/{metric}` | Consulta uma métrica geral da última execução. |
@@ -125,15 +126,109 @@ GET /api/v1/cities/1/history/population/culture/coverage_percentage?limit=20&off
 
 A resposta contém dados de identificação do município, estratégia, categoria, métrica, `count` e um vetor `results`, com cada observação associada a um `execution_id` e `processed_at`. Um histórico vazio retorna `results: []` e `count: 0` se o município existir.
 
+**Simulações no servidor:**
+
+```http
+POST /api/v1/executions/12/simulate
+X-API-Key: SUA_CHAVE
+Content-Type: application/json
+
+{
+  "services": [
+    {
+      "category": "culture",
+      "name": "Novo equipamento cultural",
+      "latitude": -24.031453,
+      "longitude": -46.491341
+    }
+  ]
+}
+```
+
+A resposta apresenta `execution_id`, `added_services`,
+`results` e `processing_time_ms`. Apenas as categorias afetadas
+são incluídas em `results`; cada categoria contém as abordagens
+`population` e `nodes`, com `before`, `after` e
+`coverage_delta_percentage_points` (diferença em pontos percentuais).
+
+Por exemplo, uma simulação somente de cultura apresenta o formato:
+
+```json
+{
+  "execution_id": 12,
+  "added_services": [
+    {
+      "category": "culture",
+      "name": "Novo equipamento cultural",
+      "longitude": -46.491341,
+      "latitude": -24.031453,
+      "graph_node_index": 123,
+      "snap_distance_m": 12.4
+    }
+  ],
+  "results": {
+    "culture": {
+      "population": {
+        "before": {
+          "coverage_percentage": 17.11,
+          "unreachable_percentage": 5.0,
+          "mean_travel_time_minutes": 22.0,
+          "median_travel_time_minutes": 18.0
+        },
+        "after": {
+          "coverage_percentage": 19.82,
+          "unreachable_percentage": 4.5,
+          "mean_travel_time_minutes": 21.0,
+          "median_travel_time_minutes": 17.0
+        },
+        "coverage_delta_percentage_points": 2.71
+      },
+      "nodes": {
+        "before": {
+          "coverage_percentage": 16.0,
+          "unreachable_percentage": 7.0,
+          "mean_travel_time_minutes": 25.0,
+          "median_travel_time_minutes": 19.0
+        },
+        "after": {
+          "coverage_percentage": 18.0,
+          "unreachable_percentage": 6.0,
+          "mean_travel_time_minutes": 24.0,
+          "median_travel_time_minutes": 18.0
+        },
+        "coverage_delta_percentage_points": 2.0
+      }
+    }
+  },
+  "processing_time_ms": 35.2
+}
+```
+
+**Valores meramente ilustrativos.** A rota não retorna categorias não
+afetadas nem a cobertura geral; esses dados podem ser consultados nos
+endpoints de análise. São aceitos de 1 a 200 estabelecimentos por requisição,
+nas categorias que compõem a execução (`health`, `education`, `food`,
+`culture`, quando analisadas). As coordenadas são campos separados em
+latitude e longitude, em graus decimais, com associação à rede caminhável
+em até 250 m.
+
+Após uma nova análise concluída com `--enable-db`, a CLI gera o pacote
+FMC1 **automaticamente** a partir dos dados do PostgreSQL e do GraphML
+em cache. O serviço FastAPI mantém até dois pacotes em memória por
+processo, sem alterar o PostgreSQL durante simulações. Não existe rota
+pública para baixar FMC1. A exportação manual permanece disponível
+para análises já concluídas. Consulte `docs/SIMULATIONS.md` para o
+fluxo completo e o comando de recuperação.
+
 ## 4. Códigos de resposta e erros comuns
 
 | HTTP | Situação | Ação recomendada |
 | --- | --- | --- |
 | `200` | Consulta bem-sucedida. | Ler o JSON; listas vazias são possíveis. |
 | `401` | Chave ausente ou inválida em `/api/v1/`. | Conferir `X-API-Key` sem divulgar a chave. |
-| `404` | Município, execução, categoria, estratégia ou métrica indisponível. | Consultar IDs, códigos e execuções concluídas. |
+| `404` | Município, execução, categoria, estratégia, métrica ou pacote de simulação indisponível. | Consultar IDs, códigos e execuções concluídas; preparar o pacote FMC1, se necessário. |
 | `422` | Parâmetro inválido, como `limit=0` ou ID não numérico. | Corrigir tipos e limites informados. |
-| `503` | Nenhuma chave de API configurada no servidor. | Administrador deve configurar `API_KEYS`. |
+| `503` | Autenticação não configurada ou pacote de simulação corrompido/indisponível. | Conferir `API_KEYS` e integridade do FMC1. |
 | `500` | Falha inesperada, incluindo possíveis problemas de banco. | Consultar logs do serviço e saúde do banco. |
 
 **Atenção:** a rota `/health` confirma que o servidor HTTP responde, mas **não verifica a conectividade com o banco de dados**. Uma consulta às cidades autenticada é um teste mais abrangente.

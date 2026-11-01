@@ -162,3 +162,22 @@ Para gerar a versão PDF localmente:
 uv run --no-project --with reportlab==4.4.9 \
   python scripts/generate_api_manual.py
 ```
+
+## Simulações no servidor
+
+A API de homologação aceita `POST /api/v1/executions/{execution_id}/simulate`
+com um ou mais serviços hipotéticos (`category`, `latitude`, `longitude`
+e `name` opcional). A VPS executa Dijkstra incremental e devolve em JSON
+**somente as categorias afetadas**, cada uma com `population` e `nodes`,
+`before`, `after` e `coverage_delta_percentage_points`.
+
+O PostgreSQL mantém os resultados da análise real, enquanto o arquivo
+interno `FMC1` permite carregar tempos, população e grafo em cache na API.
+Nenhuma alteração é feita nos dados originais durante uma simulação;
+o cliente **não precisa baixar FMC1** nem executar JavaScript ou Node.js.
+
+Em novas análises com `--enable-db` e migração `c15fbc26e001`, a CLI
+**gera o FMC1 automaticamente**, depois de concluir a persistência no banco.
+Para execuções anteriores, o exportador manual continua disponível.
+Consulte [geração automática, localização do código e exemplos da
+API](docs/SIMULATIONS.md).

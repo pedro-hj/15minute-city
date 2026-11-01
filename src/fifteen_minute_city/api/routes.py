@@ -1,3 +1,5 @@
+import os
+from pathlib import Path as FilePath
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -13,7 +15,15 @@ from fifteen_minute_city.api.schemas import (
     HistoryResponse,
     MetricHistoryResponse,
     MetricResponse,
+    SimulationRequest,
+    SimulationResponse,
     StrategyReportResponse,
+)
+from fifteen_minute_city.application.server_simulation import (
+    InvalidSimulationPackage,
+    InvalidSimulationRequest,
+    load_execution_package,
+    simulate,
 )
 from fifteen_minute_city.db.connection import get_db
 from fifteen_minute_city.db.models.city import City
@@ -153,6 +163,37 @@ def execution_result(execution_id: int, db: DbSession) -> dict:
     if execution is None:
         raise HTTPException(status_code=404, detail="Completed execution not found")
     return service.build_detailed_result(db, execution)
+
+
+@router.post(
+    "/executions/{execution_id}/simulate",
+    response_model=SimulationResponse,
+    tags=["simulations"],
+)
+def simulate_execution(
+    execution_id: int, request: SimulationRequest, db: DbSession
+) -> dict:
+    """Compute a hypothetical scenario on the VPS without changing stored results."""
+    execution = service.get_completed_execution(db, execution_id)
+    if execution is None:
+        raise HTTPException(status_code=404, detail="Completed execution not found")
+    folder = FilePath(os.getenv("SIMULATION_PACKAGE_DIR", "data/simulation-packages"))
+    try:
+        bundle = load_execution_package(folder, execution_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Simulation data not prepared for this execution",
+        ) from exc
+    except (InvalidSimulationPackage, OSError, EOFError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Simulation data is unavailable or invalid",
+        ) from exc
+    try:
+        return simulate(bundle, [item.model_dump() for item in request.services])
+    except InvalidSimulationRequest as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get(

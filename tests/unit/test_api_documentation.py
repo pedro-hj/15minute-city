@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from fifteen_minute_city.api.app import app
+from fifteen_minute_city.api.routes import router as api_router
 from fifteen_minute_city.api.service import (
     CATEGORY_METRICS,
     OVERALL_METRICS,
@@ -13,14 +14,16 @@ from fifteen_minute_city.api.service import (
 MANUAL = Path(__file__).resolve().parents[2] / "docs" / "API.md"
 
 
-def test_api_manual_documents_every_get_endpoint() -> None:
+def test_api_manual_documents_every_public_endpoint() -> None:
     text = MANUAL.read_text(encoding="utf-8")
-    documented = set(re.findall(r"^\| `GET (/[^`]+)`", text, flags=re.MULTILINE))
+    documented = set(
+        re.findall(r"^\\| `(GET|POST) (/[^`]+)`", text, flags=re.MULTILINE)
+    )
     actual = {
-        route.path
-        for route in app.routes
-        if "GET" in (getattr(route, "methods", None) or set())
-        and (route.path == "/health" or route.path.startswith("/api/v1/"))
+        (method, route.path)
+        for route in [*app.routes, *api_router.routes]
+        for method in {"GET", "POST"} & (getattr(route, "methods", None) or set())
+        if route.path == "/health" or route.path.startswith("/api/v1/")
     }
     assert actual <= documented, (
         f"Missing endpoints in docs/API.md: {sorted(actual - documented)}"
