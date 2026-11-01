@@ -35,9 +35,7 @@ def test_insee_estimation_and_boundary(tmp_path):
         {"geometry": [box(4.77, 45.70, 4.82, 45.75)]}, crs="EPSG:4326"
     ).to_file(boundary, driver="GeoJSON")
     target = tmp_path / "normalized.gpkg"
-    metadata = normalize_population_grid(
-        source, target, boundary=boundary
-    )
+    metadata = normalize_population_grid(source, target, boundary=boundary)
     grid = gpd.read_file(target)
     assert len(grid) == 1
     assert grid.iloc[0]["grid_id"] == "west"
@@ -58,9 +56,7 @@ def test_boundary_filter_preserves_row_alignment(tmp_path):
         {"geometry": [box(4.88, 45.71, 4.92, 45.74)]}, crs="EPSG:4326"
     ).to_file(boundary, driver="GeoJSON")
     target = tmp_path / "east.gpkg"
-    normalize_population_grid(
-        source, target, boundary=boundary
-    )
+    normalize_population_grid(source, target, boundary=boundary)
     grid = gpd.read_file(target)
     assert len(grid) == 1
     assert grid.iloc[0]["grid_id"] == "east"
@@ -74,9 +70,7 @@ def test_insee_projected_grid_is_reprojected_to_wgs84(tmp_path):
     projected = tmp_path / "projected.gpkg"
     gpd.read_file(source).to_crs("EPSG:3035").to_file(projected, driver="GPKG")
     target = tmp_path / "wgs84.gpkg"
-    metadata = normalize_population_grid(
-        projected, target
-    )
+    metadata = normalize_population_grid(projected, target)
     grid = gpd.read_file(target)
     assert grid.crs.to_epsg() == 4326
     assert grid.loc[0, "longitude"] == pytest.approx(4.795, abs=0.001)
@@ -128,9 +122,7 @@ def test_zip_multi_geography_requires_explicit_member(tmp_path):
         zip_file.write(source, arcname="metro/insee.gpkg")
         zip_file.write(source, arcname="reunion/insee.gpkg")
     with pytest.raises(ValueError, match="--zip-member"):
-        normalize_population_grid(
-            archive, tmp_path / "normalized.gpkg"
-        )
+        normalize_population_grid(archive, tmp_path / "normalized.gpkg")
     metadata = normalize_population_grid(
         archive,
         tmp_path / "normalized.gpkg",
@@ -246,7 +238,9 @@ def test_ambiguous_generic_fields_require_override(tmp_path):
             source, tmp_path / "normalized.gpkg", country="Portugal"
         )
     metadata = normalize_population_grid(
-        source, tmp_path / "normalized.gpkg", country="Portugal",
+        source,
+        tmp_path / "normalized.gpkg",
+        country="Portugal",
         population_column="residents",
     )
     assert metadata["total_population"] == 4
@@ -255,9 +249,7 @@ def test_ambiguous_generic_fields_require_override(tmp_path):
 def test_unsupported_unknown_columns_are_not_guessed(tmp_path):
     source = tmp_path / "unknown.geojson"
     gpd.GeoDataFrame(
-        {
-            "zone": ["A"], "volume": [13], "geometry": [box(0, 0, 1, 1)]
-        },
+        {"zone": ["A"], "volume": [13], "geometry": [box(0, 0, 1, 1)]},
         crs="EPSG:4326",
     ).to_file(source, driver="GeoJSON")
     with pytest.raises(ValueError, match="--population-column"):
@@ -266,6 +258,7 @@ def test_unsupported_unknown_columns_are_not_guessed(tmp_path):
 
 def test_geocode_with_state_and_explicit_country(tmp_path, monkeypatch):
     seen = []
+
     def fake_geocode(place):
         seen.append(place)
         return gpd.GeoDataFrame(
@@ -275,8 +268,11 @@ def test_geocode_with_state_and_explicit_country(tmp_path, monkeypatch):
     monkeypatch.setattr(population_normalizer.ox, "geocode_to_gdf", fake_geocode)
     source = tmp_path / "ibge.geojson"
     gpd.GeoDataFrame(
-        {"ID_UNICO": ["a"], "TOTAL": [25],
-         "geometry": [box(-46.0, -24.0, -45.99, -23.99)]},
+        {
+            "ID_UNICO": ["a"],
+            "TOTAL": [25],
+            "geometry": [box(-46.0, -24.0, -45.99, -23.99)],
+        },
         crs="EPSG:4326",
     ).to_file(source, driver="GeoJSON")
     metadata = normalize_population_grid(
@@ -302,4 +298,3 @@ def test_unknown_country_requires_country_argument(tmp_path):
     ).to_file(source, driver="GeoJSON")
     with pytest.raises(ValueError, match="--country"):
         normalize_population_grid(source, tmp_path / "out.gpkg")
-
