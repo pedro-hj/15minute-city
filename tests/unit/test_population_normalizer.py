@@ -42,7 +42,7 @@ def test_insee_estimation_and_boundary(tmp_path):
     assert grid.iloc[0]["population"] == 80
     assert grid.iloc[0]["estimated"] == 0
     assert grid.iloc[0]["country"] == "France"
-    assert grid.iloc[0]["source_year"] == 2021
+    assert grid.iloc[0]["source_year"] is None
     assert metadata["total_population"] == 80
     assert metadata["source_crs"] == "EPSG:4326"
     assert target.with_suffix(".metadata.json").exists()
