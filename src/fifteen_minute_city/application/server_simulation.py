@@ -205,8 +205,7 @@ def _category_metrics(
         "unreachable_percentage": 100 * (total - reachable_weight) / total,
         "mean_travel_time_minutes": (
             float(
-                np.dot(times[reachable], weights[reachable])
-                / (reachable_weight * 60)
+                np.dot(times[reachable], weights[reachable]) / (reachable_weight * 60)
             )
             if reachable_weight
             else None
