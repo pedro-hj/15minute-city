@@ -145,18 +145,80 @@ Content-Type: application/json
 }
 ```
 
-A resposta apresenta `execution_id`, `added_services`, `baseline`, `simulated`,
-`delta` e `processing_time_ms`. Os objetos `baseline` e `simulated` contêm
-`population` e `nodes`, com cobertura geral e métricas das categorias; os
-`delta` expressam **pontos percentuais**, não variação relativa. São aceitos
-de 1 a 200 estabelecimentos por requisição, em `health`, `education`, `food`
-e `culture`, desde que essas categorias façam parte da execução. As
-coordenadas são enviadas em campos separados de latitude e longitude, em
-graus decimais. Cada ponto deve estar a até 250 metros de algum nó caminhável.
-Os dados de simulação são preparados previamente pelo administrador; a API
-carrega o FMC1 em memória (cache de até dois pacotes por processo) e calcula
-os novos tempos na VPS sem alterar o PostgreSQL. Não existe endpoint público
-para baixar o arquivo FMC1.
+A resposta apresenta `execution_id`, `added_services`,
+`results` e `processing_time_ms`. Apenas as categorias afetadas
+são incluídas em `results`; cada categoria contém as abordagens
+`population` e `nodes`, com `before`, `after` e
+`coverage_delta_percentage_points` (diferença em pontos percentuais).
+
+Por exemplo, uma simulação somente de cultura apresenta o formato:
+
+```json
+{
+  "execution_id": 12,
+  "added_services": [
+    {
+      "category": "culture",
+      "name": "Novo equipamento cultural",
+      "longitude": -46.491341,
+      "latitude": -24.031453,
+      "graph_node_index": 123,
+      "snap_distance_m": 12.4
+    }
+  ],
+  "results": {
+    "culture": {
+      "population": {
+        "before": {
+          "coverage_percentage": 17.11,
+          "unreachable_percentage": 5.0,
+          "mean_travel_time_minutes": 22.0,
+          "median_travel_time_minutes": 18.0
+        },
+        "after": {
+          "coverage_percentage": 19.82,
+          "unreachable_percentage": 4.5,
+          "mean_travel_time_minutes": 21.0,
+          "median_travel_time_minutes": 17.0
+        },
+        "coverage_delta_percentage_points": 2.71
+      },
+      "nodes": {
+        "before": {
+          "coverage_percentage": 16.0,
+          "unreachable_percentage": 7.0,
+          "mean_travel_time_minutes": 25.0,
+          "median_travel_time_minutes": 19.0
+        },
+        "after": {
+          "coverage_percentage": 18.0,
+          "unreachable_percentage": 6.0,
+          "mean_travel_time_minutes": 24.0,
+          "median_travel_time_minutes": 18.0
+        },
+        "coverage_delta_percentage_points": 2.0
+      }
+    }
+  },
+  "processing_time_ms": 35.2
+}
+```
+
+**Valores meramente ilustrativos.** A rota não retorna categorias não
+afetadas nem a cobertura geral; esses dados podem ser consultados nos
+endpoints de análise. São aceitos de 1 a 200 estabelecimentos por requisição,
+nas categorias que compõem a execução (`health`, `education`, `food`,
+`culture`, quando analisadas). As coordenadas são campos separados em
+latitude e longitude, em graus decimais, com associação à rede caminhável
+em até 250 m.
+
+Após uma nova análise concluída com `--enable-db`, a CLI gera o pacote
+FMC1 **automaticamente** a partir dos dados do PostgreSQL e do GraphML
+em cache. O serviço FastAPI mantém até dois pacotes em memória por
+processo, sem alterar o PostgreSQL durante simulações. Não existe rota
+pública para baixar FMC1. A exportação manual permanece disponível
+para análises já concluídas. Consulte `docs/SIMULATIONS.md` para o
+fluxo completo e o comando de recuperação.
 
 ## 4. Códigos de resposta e erros comuns
 
