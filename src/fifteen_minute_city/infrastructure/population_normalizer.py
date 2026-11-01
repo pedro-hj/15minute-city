@@ -16,6 +16,7 @@ from zipfile import ZipFile
 
 import geopandas as gpd
 import numpy as np
+import osmnx as ox
 import pandas as pd
 
 
@@ -38,6 +39,121 @@ PROFILES = {
 }
 
 _VECTOR_EXTENSIONS = {".gpkg", ".shp", ".geojson", ".json"}
+
+# For unknown sources, infer only unambiguous, commonly used field names.
+# Never pick arbitrary numeric columns as population: that can corrupt metrics.
+_POPULATION_ALIASES = {
+    "population",
+    "pop",
+    "pop_total",
+    "total_population",
+    "populacao",
+    "população",
+    "residents",
+    "residentes",
+    "habitants",
+    "inhabitants",
+}
+_ID_ALIASES = {
+    "grid_id",
+    "cell_id",
+    "cell_code",
+    "cellcode",
+    "id_cell",
+    "id_celula",
+    "celula",
+    "id",
+}
+
+
+def _infer_schema(
+    columns: list[str],
+    *,
+    profile: str | None,
+    population_column: str | None,
+    id_column: str | None,
+    estimated_column: str | None,
+) -> tuple[str, str, str, str | None]:
+    """Match known institutes by column signature, or safely infer generic fields."""
+    if profile is not None and profile not in PROFILES:
+        raise ValueError(f"unknown population profile '{profile}'")
+    available = {column.casefold(): column for column in columns}
+    recognized = [
+        name
+        for name, candidate in PROFILES.items()
+        if name != "custom"
+        and candidate.population_column is not None
+        and candidate.id_column is not None
+        and candidate.population_column.casefold() in available
+        and candidate.id_column.casefold() in available
+    ]
+    if profile is None and len(recognized) > 1:
+        raise ValueError(
+            "multiple known population schemas match the columns; use --profile"
+        )
+    selected = profile or (recognized[0] if recognized else "custom")
+    defaults = PROFILES[selected]
+
+    def resolve(
+        explicit: str | None,
+        preferred: str | None,
+        aliases: set[str],
+        option: str,
+    ) -> str:
+        if explicit is not None:
+            match = available.get(explicit.casefold())
+            if match is None:
+                raise ValueError(
+                    f"{option} column '{explicit}' not found; "
+                    f"available columns: {', '.join(columns)}"
+                )
+            return match
+        if preferred is not None and preferred.casefold() in available:
+            return available[preferred.casefold()]
+        matches = [column for column in columns if column.casefold() in aliases]
+        if len(matches) != 1:
+            raise ValueError(
+                f"cannot safely infer {option} column; "
+                f"specify {option} explicitly. Available columns: {', '.join(columns)}"
+            )
+        return matches[0]
+
+    pop = resolve(
+        population_column, defaults.population_column, _POPULATION_ALIASES,
+        "--population-column",
+    )
+    identity = resolve(id_column, defaults.id_column, _ID_ALIASES, "--id-column")
+    flag = estimated_column or defaults.estimated_column
+    if flag is not None:
+        flag = available.get(flag.casefold())
+        if flag is None and estimated_column is not None:
+            raise ValueError(
+                f"--estimated-column '{estimated_column}' not found; "
+                f"available columns: {', '.join(columns)}"
+            )
+    return selected, pop, identity, flag
+
+
+def _resolve_boundary(
+    *,
+    boundary_file: Path | None,
+    city: str | None,
+    state: str | None,
+    country: str,
+) -> tuple[gpd.GeoDataFrame | None, str | None]:
+    if boundary_file is not None and city is not None:
+        raise ValueError("use either --boundary or --city, not both")
+    if state and not city:
+        raise ValueError("--state requires --city")
+    if boundary_file is not None:
+        return gpd.read_file(boundary_file), str(boundary_file)
+    if city is None:
+        return None, None
+    locale = {"city": city, "country": country}
+    if state:
+        locale["state"] = state
+    # The same OSMnx geocoder used by Region.build_graph().
+    return ox.geocode_to_gdf(locale), f"geocoded:{city},{state or ''},{country}"
 
 
 def _vector_source(path: Path, zip_member: str | None) -> str:
@@ -76,17 +192,16 @@ def _vector_source(path: Path, zip_member: str | None) -> str:
 
 
 def _read_grid(
-    source: str, *, boundary_path: Path | None, layer: str | None
+    source: str, *, boundary: gpd.GeoDataFrame | None, layer: str | None
 ) -> tuple[gpd.GeoDataFrame, str]:
     options = {"layer": layer} if layer else {}
     sample = gpd.read_file(source, rows=1, **options)
     if sample.crs is None:
         raise ValueError("population grid must define a CRS")
     source_crs = str(sample.crs)
-    if boundary_path is None:
+    if boundary is None:
         return gpd.read_file(source, **options), source_crs
 
-    boundary = gpd.read_file(boundary_path)
     if boundary.empty or boundary.crs is None:
         raise ValueError("boundary must not be empty and must define a CRS")
     projected_boundary = boundary.to_crs(sample.crs)
@@ -109,7 +224,7 @@ def normalize_population_grid(
     input_path: str | Path,
     output_path: str | Path,
     *,
-    profile: str = "custom",
+    profile: str | None = None,
     country: str | None = None,
     source_name: str | None = None,
     year: int | None = None,
@@ -117,22 +232,13 @@ def normalize_population_grid(
     id_column: str | None = None,
     estimated_column: str | None = None,
     boundary: str | Path | None = None,
+    city: str | None = None,
+    state: str | None = None,
     layer: str | None = None,
     zip_member: str | None = None,
     overwrite: bool = False,
 ) -> dict:
     """Write a standard spatial grid and a provenance/quality metadata sidecar."""
-    if profile not in PROFILES:
-        raise ValueError(f"unknown population profile '{profile}'")
-    defaults = PROFILES[profile]
-    country = country or defaults.country
-    source_name = source_name or defaults.source
-    population_column = population_column or defaults.population_column
-    id_column = id_column or defaults.id_column
-    estimated_column = estimated_column or defaults.estimated_column
-    year = year if year is not None else defaults.year
-    if not country or not population_column or not id_column:
-        raise ValueError("country, population column and ID column are required")
     if year is not None and year <= 0:
         raise ValueError("year must be positive")
 
@@ -146,19 +252,36 @@ def normalize_population_grid(
     if not overwrite and (output_file.exists() or metadata_file.exists()):
         raise FileExistsError(f"normalized output already exists: {output_file}")
 
-    boundary_file = Path(boundary).expanduser().resolve() if boundary else None
     source = _vector_source(input_file, zip_member)
-    grid, source_crs = _read_grid(source, boundary_path=boundary_file, layer=layer)
+    options = {"layer": layer} if layer else {}
+    sample = gpd.read_file(source, rows=1, **options)
+    available_columns = [column for column in sample.columns if column != "geometry"]
+    detected_profile, population_column, id_column, estimated_column = _infer_schema(
+        available_columns,
+        profile=profile,
+        population_column=population_column,
+        id_column=id_column,
+        estimated_column=estimated_column,
+    )
+    defaults = PROFILES[detected_profile]
+    if country and defaults.country and country.casefold() != defaults.country.casefold():
+        raise ValueError(
+            f"country '{country}' conflicts with detected source '{detected_profile}'"
+        )
+    country = country or defaults.country
+    if not country:
+        raise ValueError("cannot infer country from these columns; specify --country")
+    source_name = source_name or defaults.source
+    # The same fields occur in multiple INSEE vintages. Detection cannot prove
+    # the reference year, so only an explicit profile/year supplies that value.
+    year = year if year is not None else (defaults.year if profile else None)
+    boundary_file = Path(boundary).expanduser().resolve() if boundary else None
+    boundary_geometry, boundary_source = _resolve_boundary(
+        boundary_file=boundary_file, city=city, state=state, country=country
+    )
+    grid, source_crs = _read_grid(source, boundary=boundary_geometry, layer=layer)
     if grid.empty:
         raise ValueError("population grid must contain at least one feature")
-    required_columns = {population_column, id_column}
-    if estimated_column:
-        required_columns.add(estimated_column)
-    missing = required_columns.difference(grid.columns)
-    if missing:
-        raise ValueError(
-            f"population grid is missing columns: {', '.join(sorted(missing))}"
-        )
 
     valid = grid.geometry.notna() & ~grid.geometry.is_empty
     grid = grid.loc[valid].copy()
@@ -224,10 +347,14 @@ def normalize_population_grid(
         "schema": "cidade15-population-v1",
         "country": country,
         "source": source_name,
+        "detected_profile": detected_profile,
+        "profile_detection": "explicit" if profile else "columns",
+        "city": city,
+        "state": state,
         "source_year": year,
         "input": str(input_file),
         "output": str(output_file),
-        "boundary": str(boundary_file) if boundary_file else None,
+        "boundary": boundary_source,
         "source_crs": source_crs,
         "output_crs": "EPSG:4326",
         "population_column": population_column,
@@ -261,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--profile", choices=tuple(PROFILES), required=True)
+    parser.add_argument("--profile", choices=tuple(PROFILES))
     parser.add_argument("--country")
     parser.add_argument("--source-name")
     parser.add_argument("--year", type=int)
@@ -269,6 +396,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--id-column")
     parser.add_argument("--estimated-column")
     parser.add_argument("--boundary", type=Path)
+    parser.add_argument("--city")
+    parser.add_argument("--state")
     parser.add_argument("--layer")
     parser.add_argument("--zip-member", help="Path to the spatial dataset inside a ZIP")
     parser.add_argument("--overwrite", action="store_true")
@@ -285,6 +414,8 @@ def main(argv: list[str] | None = None) -> int:
             id_column=args.id_column,
             estimated_column=args.estimated_column,
             boundary=args.boundary,
+            city=args.city,
+            state=args.state,
             layer=args.layer,
             zip_member=args.zip_member,
             overwrite=args.overwrite,
