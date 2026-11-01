@@ -150,9 +150,8 @@ def _read_input(
     if layer is not None:
         raise ValueError("--layer only applies to spatial formats")
     if member is not None:
-        with ZipFile(path) as archive:
-            with archive.open(member) as data:
-                table = pd.read_csv(data, dtype=str)
+        with ZipFile(path) as archive, archive.open(member) as data:
+            table = pd.read_csv(data, dtype=str)
     else:
         table = pd.read_csv(path, dtype=str)
     columns = list(table.columns)
