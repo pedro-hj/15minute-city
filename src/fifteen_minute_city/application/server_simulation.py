@@ -193,9 +193,32 @@ def _weighted_median_minutes(times: np.ndarray, weights: np.ndarray) -> float | 
     return float(values[order[position]] / 60)
 
 
+def _category_metrics(
+    times: np.ndarray, weights: np.ndarray, total: float, threshold: float
+) -> dict:
+    """Compute the four public indicators for one category only."""
+    reachable = np.isfinite(times)
+    within = times <= threshold
+    reachable_weight = float(weights[reachable].sum())
+    return {
+        "coverage_percentage": 100 * float(weights[within].sum()) / total,
+        "unreachable_percentage": 100 * (total - reachable_weight) / total,
+        "mean_travel_time_minutes": (
+            float(
+                np.dot(times[reachable], weights[reachable])
+                / (reachable_weight * 60)
+            )
+            if reachable_weight
+            else None
+        ),
+        "median_travel_time_minutes": _weighted_median_minutes(times, weights),
+    }
+
+
 def _metrics(
     bundle: SimulationBundle, updates: dict[int, np.ndarray], *, weighted: bool
 ) -> dict:
+    """Build the cached original metrics (including overall intersections)."""
     weights = bundle.population if weighted else np.ones(bundle.node_count)
     total = float(weights.sum())
     if total <= 0:
@@ -207,44 +230,14 @@ def _metrics(
     for index, code in enumerate(bundle.metadata["categories"]):
         original = bundle.baseline[:, index]
         times = np.minimum(original, updates[index]) if index in updates else original
-        reachable = np.isfinite(times)
-        within = times <= threshold
-        within_all &= within
-        unreachable_any |= ~reachable
-        reachable_weight = float(weights[reachable].sum())
-        categories[code] = {
-            "coverage_percentage": 100 * float(weights[within].sum()) / total,
-            "unreachable_percentage": 100 * (total - reachable_weight) / total,
-            "mean_travel_time_minutes": (
-                float(
-                    np.dot(times[reachable], weights[reachable])
-                    / (reachable_weight * 60)
-                )
-                if reachable_weight
-                else None
-            ),
-            "median_travel_time_minutes": _weighted_median_minutes(times, weights),
-        }
+        within_all &= times <= threshold
+        unreachable_any |= ~np.isfinite(times)
+        categories[code] = _category_metrics(times, weights, total, threshold)
     return {
         "categories": categories,
         "overall_coverage_percentage": 100 * float(weights[within_all].sum()) / total,
         "overall_unreachable_percentage": (
             100 * float(weights[unreachable_any].sum()) / total
-        ),
-    }
-
-
-def _delta(baseline: dict, simulated: dict) -> dict:
-    return {
-        "unit": "percentage_points",
-        "category_coverage": {
-            code: simulated["categories"][code]["coverage_percentage"]
-            - values["coverage_percentage"]
-            for code, values in baseline["categories"].items()
-        },
-        "overall_coverage": (
-            simulated["overall_coverage_percentage"]
-            - baseline["overall_coverage_percentage"]
         ),
     }
 
@@ -294,22 +287,34 @@ def simulate(
             }
         )
 
+    # Each category is routed only once, even when multiple services were added.
     updates = {
         category: _dijkstra(bundle, nodes) for category, nodes in sources.items()
     }
-    baseline = bundle.baseline_metrics
-    simulated = {
-        "population": _metrics(bundle, updates, weighted=True),
-        "nodes": _metrics(bundle, updates, weighted=False),
-    }
+    threshold = float(bundle.metadata["threshold_minutes"]) * 60
+    results: dict[str, dict] = {}
+    for index, distances in updates.items():
+        code = categories[index]
+        times = np.minimum(bundle.baseline[:, index], distances)
+        results[code] = {}
+        for strategy, weights in (
+            ("population", bundle.population),
+            ("nodes", np.ones(bundle.node_count)),
+        ):
+            original = bundle.baseline_metrics[strategy]["categories"][code]
+            simulated = _category_metrics(
+                times, weights, float(weights.sum()), threshold
+            )
+            results[code][strategy] = {
+                "before": original,
+                "after": simulated,
+                "coverage_delta_percentage_points": (
+                    simulated["coverage_percentage"] - original["coverage_percentage"]
+                ),
+            }
     return {
         "execution_id": bundle.metadata["execution_id"],
         "added_services": placed,
-        "baseline": baseline,
-        "simulated": simulated,
-        "delta": {
-            "population": _delta(baseline["population"], simulated["population"]),
-            "nodes": _delta(baseline["nodes"], simulated["nodes"]),
-        },
+        "results": results,
         "processing_time_ms": round((time.perf_counter() - started) * 1000, 3),
     }
