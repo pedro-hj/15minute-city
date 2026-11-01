@@ -7,45 +7,94 @@ A API **não grava** estabelecimentos hipotéticos ou novos índices no banco.
 
 ## Arquitetura
 
-1. Uma execução real com `--enable-db` salva os tempos de caminhada por nó,
-   as categorias e os pesos populacionais agregados em PostgreSQL.
-2. O administrador prepara **uma vez por execução** o pacote interno `FMC1`,
-   combinando `graph.graphml` do cache com os resultados persistidos.
-3. A API valida `X-API-Key`, verifica que a execução está concluída e carrega
-   o pacote compacto da pasta `SIMULATION_PACKAGE_DIR`. O pacote descompactado
-   permanece num cache LRU de até duas execuções **por processo** e é
-   recarregado se o arquivo for substituído (alteração de mtime/tamanho).
-4. A API associa cada novo estabelecimento ao nó caminhável mais próximo
-   (até 250 m), executa Dijkstra no grafo **reverso** somente para as
-   categorias modificadas e considera o menor tempo entre o existente
-   e o hipotético.
-5. A resposta inclui coberturas, médias, medianas e diferenças em pontos
-   percentuais, ponderadas pela população e por nós viários.
+1. A CLI executa a análise real com `--enable-db`, persistindo os tempos
+   de caminhada, as categorias e os pesos populacionais no PostgreSQL.
+2. **Após a conclusão e persistência da análise**, a própria CLI executa
+   `export_completed_execution()`. A função lê o `graph.graphml` do cache e
+   os dados persistidos no PostgreSQL para gerar `<execution_id>.fmc.gz`.
+3. A API valida `X-API-Key`, confirma a execução concluída e carrega esse
+   pacote interno a partir de `SIMULATION_PACKAGE_DIR`. Os dados descompactados
+   permanecem em cache LRU de até duas execuções **por processo**.
+4. Para cada novo estabelecimento, a API encontra o nó caminhável mais próximo
+   (máximo 250 m). Executa Dijkstra no grafo reverso, **uma vez por categoria
+   afetada**, e considera o menor tempo entre os serviços reais e hipotéticos.
+5. A resposta apresenta **somente as categorias incluídas no cenário**, cada
+   uma com `population` e `nodes`: indicadores `before`, `after` e
+   `coverage_delta_percentage_points`.
 
 O motor `application/server_simulation.py` usa Python, NumPy e `heapq`.
-A requisição **não** chama um subprocesso Node.js, não carrega GraphML
-nem consulta o banco para cada nó. A verificação da execução concluída
-é uma consulta leve ao PostgreSQL.
+O endpoint não executa Node.js, não carrega GraphML por requisição e
+não altera os dados originais no PostgreSQL.
 
-## Preparação no ambiente de homologação
+## Geração automática do FMC1 na análise
 
-Requer migração `c15fbc26e001` (`node.population_weight`) e análise
-**concluída depois da migração**, pois as análises anteriores não têm
-pesos populacionais por nó.
+A automação fica em
+`src/fifteen_minute_city/main.py`, função `main()`, logo após
+`region.calculate_accessibility()` e a gravação do JSON de saída.
+
+Quando `--enable-db` estiver presente, a CLI:
+
+1. Obtém o `region.execution_id` da execução concluída;
+2. Lê `SIMULATION_PACKAGE_DIR` do ambiente (padrão:
+   `data/simulation-packages`);
+3. Abre uma sessão de leitura com `session_scope()`;
+4. Chama `export_completed_execution(db, execution_id, cache_dir, output_dir)`;
+5. Mostra o caminho de `<execution_id>.fmc.gz` no terminal.
+
+O gerador está implementado em
+`src/fifteen_minute_city/application/simulation_package.py`, função
+`export_completed_execution()`. Ele **não** precisa reexecutar a análise;
+apenas reúne os resultados já persistidos com o grafo do cache.
+
+Exemplo na homologação:
 
 ```bash
 cd /opt/15minute-city-staging
-env -u DATABASE_URL uv run alembic current
 
-# Troque 3 pelo ID de uma execução concluída na homologação.
+env -u DATABASE_URL uv run fifteen-minute-city \
+  --city "Santos" \
+  --state "São Paulo" \
+  --country "Brazil" \
+  --pbf /opt/15minute-city/data/input/brazil-latest.osm.pbf \
+  --population-grid /opt/15minute-city/data/input/grade_idXX.zip \
+  --population-column POPULATION_COLUMN \
+  --cache-dir /opt/15minute-city-staging/data/cache \
+  --enable-db \
+  --output-mode simple \
+  --verbose
+```
+
+Substitua `grade_idXX.zip` e `POPULATION_COLUMN` pelos dados identificados
+na grade populacional da cidade. Na saída, você verá:
+
+```text
+Result saved at data/output/santos-sao-paulo/...
+Preparing FMC1 for completed execution 42...
+Simulation package ready at data/simulation-packages/42.fmc.gz
+```
+
+Os valores de ID são ilustrativos. Sem `--enable-db`, a análise não gera
+pacote FMC1, pois não há execução persistida para exportar.
+
+**Falhas:** se a geração do FMC1 falhar, a CLI encerra com erro informando
+que a análise e seu JSON já foram salvos. Ela **não reclassifica**
+a execução concluída como falha; o operador pode corrigir o problema
+e exportar somente o pacote, sem reprocessar a cidade.
+
+Para preparar pacotes de **análises antigas** (ainda sem FMC1), permanece
+disponível o comando manual:
+
+```bash
 env -u DATABASE_URL uv run python \
   -m fifteen_minute_city.application.simulation_package \
-  --execution-id 3 \
+  --execution-id 42 \
   --cache-dir /opt/15minute-city-staging/data/cache \
   --output-dir /opt/15minute-city-staging/data/simulation-packages
 ```
 
-O arquivo gerado é `data/simulation-packages/3.fmc.gz`.
+Uma análise que antecede a migração `c15fbc26e001` precisa ser refeita,
+pois não dispõe dos pesos populacionais por nó.
+
 No `.env` da homologação:
 
 ```dotenv
@@ -56,14 +105,8 @@ API_KEYS=CHAVE_EXCLUSIVA_DE_HOMOLOGACAO
 SIMULATION_PACKAGE_DIR=/opt/15minute-city-staging/data/simulation-packages
 ```
 
-Assegure que a conexão aponta ao banco de teste antes de migrar ou
-processar dados. Esta PR **não** faz deploy nem migra a produção.
-
-Para iniciar a API localmente:
-
-```bash
-env -u DATABASE_URL uv run fifteen-minute-city-api
-```
+**Confirme a conexão ao banco de homologação antes de iniciar a CLI.**
+Esta PR não executa deploy ou migrações em produção.
 
 ## Requisição HTTP
 
@@ -98,22 +141,78 @@ curl -fsS -X POST \
   | python3 -m json.tool
 ```
 
-O retorno contém:
+O retorno agora é **restrito às categorias afetadas**:
 
-- `execution_id` e `added_services` (incluindo nó selecionado e
-  `snap_distance_m`);
-- `baseline.population` / `baseline.nodes`: indicadores originais;
-- `simulated.population` / `simulated.nodes`: indicadores atualizados;
-- `delta.population` / `delta.nodes`: diferenças de coberturas em **pontos
-  percentuais** (`category_coverage` e `overall_coverage`);
-- `processing_time_ms`: tempo de cálculo no motor, sem incluir rede,
-  leitura inicial do FMC1 nem validação HTTP.
+- `execution_id`: identificador da análise original;
+- `added_services`: pontos simulados e distância de associação ao grafo;
+- `results.<category>.population`: dados populacionais da categoria;
+- `results.<category>.nodes`: dados por nós viários da mesma categoria;
+- `before` e `after`: cobertura, inalcançáveis, tempos médio e mediano;
+- `coverage_delta_percentage_points`: variação de cobertura em pontos
+  percentuais (`after - before`);
+- `processing_time_ms`: tempo de cálculo do motor, sem incluir rede nem
+  a primeira leitura do FMC1.
 
-As métricas por categoria são `coverage_percentage`,
-`unreachable_percentage`, `mean_travel_time_minutes` e
-`median_travel_time_minutes`. A cobertura geral exige alcançar
-**todas as categorias analisadas em até 15 minutos**; não é uma média.
-O Dijkstra não aplica cutoff de 15 minutos porque as médias e medianas
+Exemplo **ilustrativo** da estrutura simplificada (valores fictícios):
+
+```json
+{
+  "execution_id": 42,
+  "added_services": [
+    {
+      "category": "culture",
+      "name": "Novo equipamento cultural",
+      "longitude": -46.491341,
+      "latitude": -24.031453,
+      "graph_node_index": 123,
+      "snap_distance_m": 12.4
+    }
+  ],
+  "results": {
+    "culture": {
+      "population": {
+        "before": {
+          "coverage_percentage": 17.11,
+          "unreachable_percentage": 5.0,
+          "mean_travel_time_minutes": 22.0,
+          "median_travel_time_minutes": 18.0
+        },
+        "after": {
+          "coverage_percentage": 19.82,
+          "unreachable_percentage": 4.5,
+          "mean_travel_time_minutes": 21.0,
+          "median_travel_time_minutes": 17.0
+        },
+        "coverage_delta_percentage_points": 2.71
+      },
+      "nodes": {
+        "before": {
+          "coverage_percentage": 16.0,
+          "unreachable_percentage": 7.0,
+          "mean_travel_time_minutes": 25.0,
+          "median_travel_time_minutes": 19.0
+        },
+        "after": {
+          "coverage_percentage": 18.0,
+          "unreachable_percentage": 6.0,
+          "mean_travel_time_minutes": 24.0,
+          "median_travel_time_minutes": 18.0
+        },
+        "coverage_delta_percentage_points": 2.0
+      }
+    }
+  },
+  "processing_time_ms": 35.2
+}
+```
+
+Se o cenário contiver `culture` e `health`, apenas essas duas categorias
+aparecerão em `results`, independentemente da quantidade de pontos
+simulados por categoria. O endpoint não retorna indicadores gerais nem
+categorias não modificadas. Essas informações continuam disponíveis nos
+endpoints de consulta das análises originais.
+
+O Dijkstra continua **sem cutoff de 15 minutos**, pois as médias e medianas
 consideram todos os nós alcançáveis.
 
 ## Validação e erros
@@ -130,9 +229,10 @@ A primeira versão não armazena o limite administrativo no pacote,
 portanto a proximidade do nó não substitui uma validação rigorosa do
 ponto dentro do município.
 
-A geração do pacote ainda é **administrativa e manual**. Não há
-endpoint público de download `GET /simulation-package`. Os arquivos
-FMC1 permanecem internos à VPS. O motor ESM em `client/` pode ser
+A geração é automática após novas análises com `--enable-db`;
+o exportador manual continua disponível para reparar ou preparar uma análise
+já concluída. Não há endpoint público de download `GET /simulation-package`.
+Os arquivos FMC1 permanecem internos à VPS. O motor ESM em `client/` pode ser
 mantido como referência independente para testes de equivalência,
 mas não é necessário para consumir a API.
 
