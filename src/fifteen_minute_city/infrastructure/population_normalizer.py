@@ -23,13 +23,34 @@ from shapely import wkt
 _VECTOR_EXTENSIONS = {".gpkg", ".shp", ".geojson", ".json"}
 _SUPPORTED_EXTENSIONS = _VECTOR_EXTENSIONS | {".csv"}
 _ID_ALIASES = {
-    "id", "id_unico", "id_unico_grade", "grid_id", "cell_id", "cellcode",
-    "cell_code", "id_cell", "id_celula", "celula", "idcar_200m", "idcar_1km",
+    "id",
+    "id_unico",
+    "id_unico_grade",
+    "grid_id",
+    "cell_id",
+    "cellcode",
+    "cell_code",
+    "id_cell",
+    "id_celula",
+    "celula",
+    "idcar_200m",
+    "idcar_1km",
 }
 _POPULATION_ALIASES = {
-    "populacao", "population", "pop", "pop_total", "total_population",
-    "total", "ind", "residents", "residentes", "habitantes", "habitants",
-    "inhabitants", "head_count", "population_total",
+    "populacao",
+    "population",
+    "pop",
+    "pop_total",
+    "total_population",
+    "total",
+    "ind",
+    "residents",
+    "residentes",
+    "habitantes",
+    "habitants",
+    "inhabitants",
+    "head_count",
+    "population_total",
 }
 _LATITUDE_ALIASES = {"latitude", "lat"}
 _LONGITUDE_ALIASES = {"longitude", "lon", "lng", "long"}
@@ -38,12 +59,20 @@ _WKT_ALIASES = {"localizacao", "geometry", "geom", "wkt", "the_geom"}
 
 def _canonical(name: str) -> str:
     value = unicodedata.normalize("NFKD", str(name))
-    return "".join(char for char in value if not unicodedata.combining(char)).casefold().strip()
+    return (
+        "".join(char for char in value if not unicodedata.combining(char))
+        .casefold()
+        .strip()
+    )
 
 
 def _select_column(
-    columns: list[str], explicit: str | None, aliases: set[str], option: str,
-    *, required: bool = True,
+    columns: list[str],
+    explicit: str | None,
+    aliases: set[str],
+    option: str,
+    *,
+    required: bool = True,
 ) -> str | None:
     normalized = {}
     for column in columns:
@@ -82,12 +111,16 @@ def _source(path: Path, zip_member: str | None) -> tuple[str, str, str | None]:
 
     with ZipFile(path) as archive:
         entries = [
-            name for name in archive.namelist()
-            if not name.endswith("/") and Path(name).suffix.lower() in _SUPPORTED_EXTENSIONS
+            name
+            for name in archive.namelist()
+            if not name.endswith("/")
+            and Path(name).suffix.lower() in _SUPPORTED_EXTENSIONS
         ]
     if zip_member is None:
         if len(entries) != 1:
-            raise ValueError("ZIP contains multiple spatial/tabular sources; use --zip-member")
+            raise ValueError(
+                "ZIP contains multiple spatial/tabular sources; use --zip-member"
+            )
         zip_member = entries[0]
     if zip_member not in entries:
         raise ValueError(f"ZIP member not found: {zip_member}")
@@ -96,7 +129,10 @@ def _source(path: Path, zip_member: str | None) -> tuple[str, str, str | None]:
 
 
 def _boundary(
-    *, city: str | None, state: str | None, country: str | None,
+    *,
+    city: str | None,
+    state: str | None,
+    country: str | None,
     boundary: str | Path | None,
 ) -> tuple[gpd.GeoDataFrame | None, str | None]:
     if boundary is not None and city is not None:
@@ -126,10 +162,17 @@ def _boundary(
 
 
 def _read_input(
-    path: Path, source: str, ext: str, member: str | None,
-    *, layer: str | None, input_crs: str | None,
-    location_column: str | None, latitude_column: str | None,
-    longitude_column: str | None, area: gpd.GeoDataFrame | None,
+    path: Path,
+    source: str,
+    ext: str,
+    member: str | None,
+    *,
+    layer: str | None,
+    input_crs: str | None,
+    location_column: str | None,
+    latitude_column: str | None,
+    longitude_column: str | None,
+    area: gpd.GeoDataFrame | None,
 ) -> gpd.GeoDataFrame:
     if ext != ".csv":
         if input_crs is not None or location_column is not None:
@@ -157,10 +200,7 @@ def _read_input(
     columns = list(table.columns)
 
     explicit_wkt = location_column is not None
-    auto_wkt = [
-        column for column in columns
-        if _canonical(column) in _WKT_ALIASES
-    ]
+    auto_wkt = [column for column in columns if _canonical(column) in _WKT_ALIASES]
     use_wkt = explicit_wkt or (len(auto_wkt) == 1)
     if use_wkt:
         if latitude_column or longitude_column:
@@ -174,7 +214,9 @@ def _read_input(
             geometry = table[wkt_col].map(wkt.loads)
         except (TypeError, ValueError) as exc:
             raise ValueError("invalid WKT geometry in CSV") from exc
-        return gpd.GeoDataFrame(table.drop(columns=[wkt_col]), geometry=geometry, crs=input_crs)
+        return gpd.GeoDataFrame(
+            table.drop(columns=[wkt_col]), geometry=geometry, crs=input_crs
+        )
 
     if input_crs is not None and input_crs.upper() != "EPSG:4326":
         raise ValueError("CSV latitude/longitude use EPSG:4326; omit --input-crs")
@@ -233,9 +275,16 @@ def normalize_population_grid(
         city=city, state=state, country=country, boundary=boundary
     )
     grid = _read_input(
-        input_file, source, ext, member, layer=layer, input_crs=input_crs,
-        location_column=location_column, latitude_column=latitude_column,
-        longitude_column=longitude_column, area=region,
+        input_file,
+        source,
+        ext,
+        member,
+        layer=layer,
+        input_crs=input_crs,
+        location_column=location_column,
+        latitude_column=latitude_column,
+        longitude_column=longitude_column,
+        area=region,
     )
     if grid.empty:
         raise ValueError("input grid has no features")
@@ -262,7 +311,10 @@ def normalize_population_grid(
         raise ValueError("no population cells inside the specified boundary")
 
     populations = pd.to_numeric(grid[population_name], errors="coerce")
-    if populations.isna().any() or not np.isfinite(populations.to_numpy(dtype=float)).all():
+    if (
+        populations.isna().any()
+        or not np.isfinite(populations.to_numpy(dtype=float)).all()
+    ):
         raise ValueError("POPULACAO must contain finite numeric values")
     if (populations < 0).any():
         raise ValueError("POPULACAO must not be negative")
@@ -278,7 +330,8 @@ def normalize_population_grid(
         # A surrogate is a technical identifier, not a claim about the source.
         ids = pd.Series(
             [f"cell-{index + 1:08d}" for index in range(len(grid))],
-            index=grid.index, dtype="string"
+            index=grid.index,
+            dtype="string",
         )
         generated_ids = True
 
@@ -314,8 +367,11 @@ def normalize_population_grid(
         temp_gpkg = Path(tmp) / "grid.gpkg"
         temp_metadata = Path(tmp) / "grid.metadata.json"
         normalized.to_file(
-            temp_gpkg, layer="grade_populacional", driver="GPKG",
-            engine="pyogrio", layer_options={"GEOMETRY_NAME": "LOCALIZACAO"},
+            temp_gpkg,
+            layer="grade_populacional",
+            driver="GPKG",
+            engine="pyogrio",
+            layer_options={"GEOMETRY_NAME": "LOCALIZACAO"},
         )
         temp_metadata.write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
@@ -349,15 +405,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = normalize_population_grid(
-            args.input, args.output,
+            args.input,
+            args.output,
             population_column=args.population_column,
             id_column=args.id_column,
             location_column=args.location_column,
             latitude_column=args.latitude_column,
             longitude_column=args.longitude_column,
             input_crs=args.input_crs,
-            city=args.city, state=args.state, country=args.country,
-            boundary=args.boundary, layer=args.layer, zip_member=args.zip_member,
+            city=args.city,
+            state=args.state,
+            country=args.country,
+            boundary=args.boundary,
+            layer=args.layer,
+            zip_member=args.zip_member,
             overwrite=args.overwrite,
         )
     except (OSError, ValueError, FileExistsError) as exc:
