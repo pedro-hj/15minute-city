@@ -119,7 +119,9 @@ def _infer_schema(
         return matches[0]
 
     pop = resolve(
-        population_column, defaults.population_column, _POPULATION_ALIASES,
+        population_column,
+        defaults.population_column,
+        _POPULATION_ALIASES,
         "--population-column",
     )
     identity = resolve(id_column, defaults.id_column, _ID_ALIASES, "--id-column")
@@ -264,7 +266,11 @@ def normalize_population_grid(
         estimated_column=estimated_column,
     )
     defaults = PROFILES[detected_profile]
-    if country and defaults.country and country.casefold() != defaults.country.casefold():
+    if (
+        country
+        and defaults.country
+        and country.casefold() != defaults.country.casefold()
+    ):
         raise ValueError(
             f"country '{country}' conflicts with detected source '{detected_profile}'"
         )
