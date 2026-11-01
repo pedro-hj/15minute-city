@@ -20,30 +20,36 @@ cd 15minute-city
 uv sync
 ```
 
-## Normalização populacional internacional
+## Normalização populacional universal
 
-A CLI continua aceitando ZIPs originais do IBGE. Para utilizar grades de outros
-países, converta primeiro a fonte para o contrato GeoPackage padronizado
-`cidade15-population-v1`. Há perfis para IBGE, INSEE Filosofi 2021 (200 m)
-e campos configuráveis de outros fornecedores. Exemplo para Lyon:
+O normalizador converte arquivos vetoriais (GeoPackage, Shapefile, GeoJSON, ZIP)
+e CSV com localização geográfica para **um único contrato espacial**:
+
+- `ID` — identificador da unidade populacional;
+- `LOCALIZACAO` — geometria da unidade (polígono ou ponto, EPSG:4326);
+- `POPULACAO` — quantidade de habitantes.
+
+Ele não exige país, instituto nem perfil. Detecta automaticamente nomes
+de colunas comuns; se algum campo for ambíguo, permite informar
+`--id-column` e `--population-column`.
 
 ```bash
 uv run fifteen-minute-city-normalize-population \
-  --input data/input/france/filosofi2021.zip \
-  --zip-member 'ARQUIVO/INTERNO.gpkg' \
-  --city Lyon \
-  --country France \
-  --year 2021 \
-  --output data/normalized/france/lyon_filosofi_2021.gpkg
+  --input data/input/grade.zip \
+  --city "Lyon" \
+  --country "France" \
+  --output data/normalized/lyon.gpkg
 ```
 
-O normalizador reconhece automaticamente as colunas do IBGE/INSEE e pode
-obter o limite municipal com `--city`. O `--profile` é opcional.
-Para analisar o arquivo normalizado, informe
-`--population-column population --population-id-column grid_id`.
-O normalizador também grava um arquivo `*.metadata.json` com a procedência
-e a proporção de valores populacionais imputados. Veja
-**[normalização de grades e exemplos](docs/POPULATION_NORMALIZATION.md)**.
+`--city` é opcional e faz o recorte geográfico consultando o OSMnx. Para
+conjuntos ZIP com várias fontes, use `--zip-member`.
+O GeoPackage de saída mantém as três colunas, enquanto um JSON separado
+registra procedência e validações.
+
+Na análise, use
+`--population-grid data/normalized/lyon.gpkg --population-column POPULACAO --population-id-column ID`.
+
+Veja **[normalizador e formatos aceitos](docs/POPULATION_NORMALIZATION.md)**.
 
 ## Execução
 
