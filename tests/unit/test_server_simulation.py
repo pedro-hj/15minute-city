@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from fifteen_minute_city.api import routes
-from fifteen_minute_city.api.schemas import SimulationRequest
+from fifteen_minute_city.api.schemas import SimulationRequest, SimulationResponse
 from fifteen_minute_city.application.server_simulation import (
     InvalidSimulationPackage,
     InvalidSimulationRequest,
@@ -46,7 +46,7 @@ def sample_bundle():
     return decode_package(raw)
 
 
-def test_server_matches_reference_javascript_health_scenario():
+def test_response_includes_only_affected_category_for_both_strategies():
     bundle = sample_bundle()
     baseline_before = bundle.baseline.copy()
     result = simulate(
@@ -54,36 +54,50 @@ def test_server_matches_reference_javascript_health_scenario():
         [{"category": "health", "name": "UBS", "latitude": 0, "longitude": 0.01}],
     )
     assert result["execution_id"] == 7
-    assert result["baseline"]["population"]["overall_coverage_percentage"] == 0
-    assert result["simulated"]["population"]["overall_coverage_percentage"] == 50
-    assert (
-        result["simulated"]["population"]["categories"]["health"]["coverage_percentage"]
-        == 100
+    assert list(result["results"]) == ["health"]
+    assert "baseline" not in result
+    assert "simulated" not in result
+    assert "delta" not in result
+
+    health = result["results"]["health"]
+    assert set(health) == {"population", "nodes"}
+    population = health["population"]
+    assert population["before"]["coverage_percentage"] == 50
+    assert population["after"]["coverage_percentage"] == 100
+    assert population["coverage_delta_percentage_points"] == 50
+    assert population["after"]["mean_travel_time_minutes"] == 0
+    assert health["nodes"]["before"]["coverage_percentage"] == pytest.approx(
+        100 / 3
     )
-    assert (
-        result["simulated"]["population"]["categories"]["health"][
-            "mean_travel_time_minutes"
-        ]
-        == 0
+    assert health["nodes"]["after"]["coverage_percentage"] == pytest.approx(
+        200 / 3
     )
-    assert result["delta"]["population"]["overall_coverage"] == 50
-    assert result["delta"]["population"]["category_coverage"]["food"] == 0
     assert result["added_services"][0]["snap_distance_m"] == 0
     assert result["processing_time_ms"] >= 0
     np.testing.assert_array_equal(bundle.baseline, baseline_before)
 
 
-def test_multiple_categories_update_overall_intersection():
+def test_multiple_services_report_each_changed_category_only():
+    bundle = sample_bundle()
     result = simulate(
-        sample_bundle(),
+        bundle,
         [
+            {"category": "health", "latitude": 0, "longitude": 0.01},
             {"category": "health", "latitude": 0, "longitude": 0.01},
             {"category": "food", "latitude": 0, "longitude": 0},
         ],
     )
-    assert result["simulated"]["population"]["overall_coverage_percentage"] == 100
-    assert result["simulated"]["nodes"]["overall_coverage_percentage"] == pytest.approx(
-        200 / 3
+    assert set(result["results"]) == {"health", "food"}
+    for category in ("health", "food"):
+        assert (
+            result["results"][category]["population"]["after"]["coverage_percentage"]
+            == 100
+        )
+        assert set(result["results"][category]) == {"population", "nodes"}
+    # No superfluous overall metrics are returned.
+    assert all(
+        "overall_coverage_percentage" not in str(value)
+        for value in result["results"].values()
     )
 
 
@@ -123,7 +137,8 @@ def test_api_routes_server_side_and_removes_package_download(monkeypatch):
         {"services": [{"category": "health", "latitude": 0, "longitude": 0.01}]}
     )
     result = routes.simulate_execution(7, scenario, object())
-    assert result["simulated"]["population"]["overall_coverage_percentage"] == 50
+    assert result["results"]["health"]["population"]["after"]["coverage_percentage"] == 100
+    SimulationResponse.model_validate(result)
 
     invalid = SimulationRequest.model_validate(
         {"services": [{"category": "culture", "latitude": 0, "longitude": 0.01}]}
