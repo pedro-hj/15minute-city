@@ -162,6 +162,7 @@ def test_output_is_not_overwritten_by_default(tmp_path):
     with pytest.raises(FileExistsError):
         normalize_population_grid(source, target)
 
+
 def test_auto_detect_insee_does_not_invent_reference_year(tmp_path):
     source = _insee_grid(tmp_path)
     output = tmp_path / "france.gpkg"
