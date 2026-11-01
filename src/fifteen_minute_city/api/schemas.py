@@ -121,26 +121,15 @@ class SimulationCategoryMetrics(BaseModel):
     median_travel_time_minutes: float | None
 
 
-class SimulationStrategyMetrics(BaseModel):
-    categories: dict[str, SimulationCategoryMetrics]
-    overall_coverage_percentage: float
-    overall_unreachable_percentage: float
+class SimulationCategoryComparison(BaseModel):
+    before: SimulationCategoryMetrics
+    after: SimulationCategoryMetrics
+    coverage_delta_percentage_points: float
 
 
-class SimulationReports(BaseModel):
-    population: SimulationStrategyMetrics
-    nodes: SimulationStrategyMetrics
-
-
-class SimulationDeltaMetrics(BaseModel):
-    unit: str
-    category_coverage: dict[str, float]
-    overall_coverage: float
-
-
-class SimulationDeltas(BaseModel):
-    population: SimulationDeltaMetrics
-    nodes: SimulationDeltaMetrics
+class SimulationCategoryResults(BaseModel):
+    population: SimulationCategoryComparison
+    nodes: SimulationCategoryComparison
 
 
 class SimulationPlacedService(BaseModel):
@@ -155,7 +144,5 @@ class SimulationPlacedService(BaseModel):
 class SimulationResponse(BaseModel):
     execution_id: int
     added_services: list[SimulationPlacedService]
-    baseline: SimulationReports
-    simulated: SimulationReports
-    delta: SimulationDeltas
+    results: dict[str, SimulationCategoryResults]
     processing_time_ms: float
