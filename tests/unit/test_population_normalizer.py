@@ -38,9 +38,7 @@ def test_exact_three_fields_and_geometry_name_in_geopackage(tmp_path):
         cols = connection.execute(
             "SELECT column_name FROM gpkg_geometry_columns"
         ).fetchall()
-        table = connection.execute(
-            "PRAGMA table_info(grade_populacional)"
-        ).fetchall()
+        table = connection.execute("PRAGMA table_info(grade_populacional)").fetchall()
     assert cols == [("LOCALIZACAO",)]
     assert {row[1] for row in table} == {"fid", "LOCALIZACAO", "ID", "POPULACAO"}
 
@@ -93,14 +91,19 @@ def test_optional_country_and_state_disambiguate_city(tmp_path, monkeypatch):
 
     monkeypatch.setattr(population_normalizer.ox, "geocode_to_gdf", fake_geocode)
     normalize_population_grid(
-        _grid(tmp_path), tmp_path / "lyon.gpkg",
-        city="Lyon", state="Auvergne-Rhone-Alpes", country="France",
+        _grid(tmp_path),
+        tmp_path / "lyon.gpkg",
+        city="Lyon",
+        state="Auvergne-Rhone-Alpes",
+        country="France",
     )
-    assert seen == [{
-        "city": "Lyon",
-        "state": "Auvergne-Rhone-Alpes",
-        "country": "France",
-    }]
+    assert seen == [
+        {
+            "city": "Lyon",
+            "state": "Auvergne-Rhone-Alpes",
+            "country": "France",
+        }
+    ]
 
 
 def test_manual_boundary_keeps_only_selected_centers(tmp_path):
@@ -152,9 +155,7 @@ def test_zip_multiple_sources_needs_member(tmp_path):
         zipper.write(source, arcname="two.gpkg")
     with pytest.raises(ValueError, match="--zip-member"):
         normalize_population_grid(archive, tmp_path / "out.gpkg")
-    normalize_population_grid(
-        archive, tmp_path / "out.gpkg", zip_member="one.gpkg"
-    )
+    normalize_population_grid(archive, tmp_path / "out.gpkg", zip_member="one.gpkg")
     assert len(gpd.read_file(tmp_path / "out.gpkg")) == 3
 
 
@@ -180,15 +181,14 @@ def test_csv_with_wkt_geometry_and_crs(tmp_path):
     source = tmp_path / "polygons.csv"
     pd.DataFrame(
         {
-            "ID": ["ABC"], "POPULATION": [7],
+            "ID": ["ABC"],
+            "POPULATION": [7],
             "WKT": ["POLYGON ((0 0, 0 1, 1 1, 1 0, 0 0))"],
         }
     ).to_csv(source, index=False)
     with pytest.raises(ValueError, match="--input-crs"):
         normalize_population_grid(source, tmp_path / "out.gpkg")
-    normalize_population_grid(
-        source, tmp_path / "out.gpkg", input_crs="EPSG:4326"
-    )
+    normalize_population_grid(source, tmp_path / "out.gpkg", input_crs="EPSG:4326")
     assert gpd.read_file(tmp_path / "out.gpkg").geometry.iloc[0].geom_type == "Polygon"
 
 
@@ -212,8 +212,10 @@ def test_unknown_column_requires_explicit_mapping(tmp_path):
     with pytest.raises(ValueError, match="--population-column"):
         normalize_population_grid(source, tmp_path / "out.gpkg")
     report = normalize_population_grid(
-        source, tmp_path / "out.gpkg",
-        id_column="cell", population_column="qty_people",
+        source,
+        tmp_path / "out.gpkg",
+        id_column="cell",
+        population_column="qty_people",
     )
     assert report["total_population"] == 14
 
@@ -222,16 +224,16 @@ def test_ambiguous_population_columns_require_override(tmp_path):
     source = tmp_path / "ambiguous.geojson"
     gpd.GeoDataFrame(
         {
-            "ID": ["a"], "POP": [1], "TOTAL": [3],
+            "ID": ["a"],
+            "POP": [1],
+            "TOTAL": [3],
             "geometry": [box(0, 0, 1, 1)],
         },
         crs="EPSG:4326",
     ).to_file(source, driver="GeoJSON")
     with pytest.raises(ValueError, match="--population-column"):
         normalize_population_grid(source, tmp_path / "out.gpkg")
-    normalize_population_grid(
-        source, tmp_path / "out.gpkg", population_column="TOTAL"
-    )
+    normalize_population_grid(source, tmp_path / "out.gpkg", population_column="TOTAL")
     assert gpd.read_file(tmp_path / "out.gpkg")["POPULACAO"].sum() == 3
 
 
@@ -249,7 +251,8 @@ def test_duplicate_ids_are_rejected(tmp_path):
     source = tmp_path / "duplicates.geojson"
     gpd.GeoDataFrame(
         {
-            "ID": ["same", "same"], "population": [1, 2],
+            "ID": ["same", "same"],
+            "population": [1, 2],
             "geometry": [box(0, 0, 1, 1), box(2, 0, 3, 1)],
         },
         crs="EPSG:4326",
