@@ -20,6 +20,29 @@ cd 15minute-city
 uv sync
 ```
 
+## Normalização de grades populacionais
+
+O normalizador converte grades geográficas, como Shapefile ou GeoPackage,
+para um único formato com **ID**, **LOCATION** (geometria) e **POPULATION**
+(habitantes). Basta informar as colunas de ID e população; o sistema encontra
+automaticamente a geometria e preserva o CRS original.
+
+```bash
+uv run fifteen-minute-city-normalize-population \
+  --input data/input/france/france_metro/carreaux_200m_met.shp \
+  --id-column idcar_200m \
+  --population-column ind \
+  --output data/normalized/france.gpkg
+```
+
+Para utilizar o arquivo na CLI principal, informe
+`--population-grid data/normalized/france.gpkg --population-column POPULATION --population-id-column ID`.
+O recorte municipal e as reprojeções necessárias ao roteamento são feitos na
+CLI principal, não no normalizador.
+
+Consulte o **[manual de normalização](docs/POPULATION_NORMALIZATION.md)**
+para os formatos aceitos e exemplos adicionais.
+
 ## Execução
 
 ```bash

@@ -78,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--population-grid",
         type=Path,
         required=True,
-        help="Population grid, including an IBGE ZIP file",
+        help="Population grid (original file or normalized GeoPackage)",
     )
     parser.add_argument("--population-column", default="population")
     parser.add_argument("--population-id-column")
