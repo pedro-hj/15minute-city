@@ -11,6 +11,7 @@ SERVICE_CATEGORIES: dict[str, list[tuple[str, str]]] = {
         ("amenity", "hospital"),
         ("amenity", "clinic"),
         ("amenity", "doctors"),
+        ("amenity", "pharmacy"),
         ("healthcare", "hospital"),
         ("healthcare", "clinic"),
     ],

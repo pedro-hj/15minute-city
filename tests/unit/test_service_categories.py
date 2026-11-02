@@ -18,6 +18,7 @@ def test_expected_categories() -> None:
             ("amenity", "hospital"),
             ("amenity", "clinic"),
             ("amenity", "doctors"),
+            ("amenity", "pharmacy"),
             ("healthcare", "hospital"),
             ("healthcare", "clinic"),
         ],
@@ -52,7 +53,7 @@ def test_osm_services_are_grouped_by_category_without_losing_duplicate_names():
     services = gpd.GeoDataFrame(
         {
             "name": ["Central", "Central", "Neighborhood", "Museum"],
-            "amenity": ["hospital", "clinic", "school", None],
+            "amenity": ["hospital", "pharmacy", "school", None],
             "healthcare": [None, None, None, None],
             "shop": [None, None, None, None],
             "tourism": [None, None, None, "museum"],
