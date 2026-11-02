@@ -11,7 +11,6 @@ SERVICE_CATEGORIES: dict[str, list[tuple[str, str]]] = {
         ("amenity", "hospital"),
         ("amenity", "clinic"),
         ("amenity", "doctors"),
-        ("amenity", "pharmacy"),
         ("healthcare", "hospital"),
         ("healthcare", "clinic"),
     ],
@@ -33,5 +32,10 @@ SERVICE_CATEGORIES: dict[str, list[tuple[str, str]]] = {
         ("amenity", "library"),
         ("amenity", "cinema"),
         ("tourism", "museum"),
+        ("amenity", "theatre"),
+        ("amenity", "arts_centre"),
+        ("amenity", "community_centre"),
+        ("tourism", "gallery"),
+        ("amenity", "planetarium"),
     ],
 }
