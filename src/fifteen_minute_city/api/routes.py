@@ -2,7 +2,7 @@ import os
 from pathlib import Path as FilePath
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy.orm import Session
 
 from fifteen_minute_city.api import service
@@ -10,6 +10,7 @@ from fifteen_minute_city.api.auth import require_api_key
 from fifteen_minute_city.api.schemas import (
     CategoryResponse,
     CityResponse,
+    CitySummaryResponse,
     DetailedResultResponse,
     ExecutionResponse,
     HistoryResponse,
@@ -114,6 +115,41 @@ def api_version() -> dict[str, str]:
 @router.get("/cities", response_model=list[CityResponse], tags=["cities"])
 def cities(db: DbSession) -> list[City]:
     return service.list_public_cities(db)
+
+
+# These two routes must come before /cities/{city_id};
+# otherwise FastAPI tries to parse "summary" as an int and returns 422.
+@router.get(
+    "/cities/summary",
+    response_model=list[CitySummaryResponse],
+    tags=["cities"],
+)
+def cities_summary(
+    db: DbSession,
+    categories: Annotated[
+        str | None,
+        Query(
+            max_length=200,
+            description="Comma-separated category codes, e.g. 'health,culture'. "
+            "Default: every category (same as overall_coverage_percentage).",
+        ),
+    ] = None,
+) -> list[dict]:
+    codes = (
+        [code.strip() for code in categories.split(",") if code.strip()]
+        if categories
+        else None
+    )
+    try:
+        return service.build_city_summaries(db, codes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/cities/boundaries", tags=["cities"])
+def cities_boundaries(db: DbSession, response: Response) -> dict:
+    response.headers["Cache-Control"] = "public, max-age=600"
+    return service.build_city_boundaries(db)
 
 
 @router.get("/cities/{city_id}", response_model=CityResponse, tags=["cities"])

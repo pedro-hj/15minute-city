@@ -14,6 +14,20 @@ class CityResponse(BaseModel):
     country: str
 
 
+class CitySummaryResponse(BaseModel):
+    city_id: int
+    name: str
+    country: str
+    execution_id: int
+    processed_at: datetime.datetime
+    threshold_minutes: float
+    total_population: float
+    categories: dict[str, float | None]
+    selected_categories: list[str]
+    selected_population: float
+    selected_coverage_percentage: float | None
+
+
 class CategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
