@@ -14,6 +14,20 @@ class CityResponse(BaseModel):
     country: str
 
 
+class CitySummaryResponse(BaseModel):
+    city_id: int
+    name: str
+    country: str
+    execution_id: int
+    processed_at: datetime.datetime
+    threshold_minutes: float
+    total_population: float
+    categories: dict[str, float | None]
+    selected_categories: list[str]
+    selected_population: float
+    selected_coverage_percentage: float | None
+
+
 class CategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -141,8 +155,25 @@ class SimulationPlacedService(BaseModel):
     snap_distance_m: float
 
 
+class SimulationOverallMetrics(BaseModel):
+    coverage_percentage: float
+    unreachable_percentage: float
+
+
+class SimulationOverallComparison(BaseModel):
+    before: SimulationOverallMetrics
+    after: SimulationOverallMetrics
+    coverage_delta_percentage_points: float
+
+
+class SimulationOverallResults(BaseModel):
+    population: SimulationOverallComparison
+    nodes: SimulationOverallComparison
+
+
 class SimulationResponse(BaseModel):
     execution_id: int
     added_services: list[SimulationPlacedService]
     results: dict[str, SimulationCategoryResults]
+    overall: SimulationOverallResults
     processing_time_ms: float

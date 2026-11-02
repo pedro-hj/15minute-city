@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+import threading
+from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 
 from fifteen_minute_city.db.models.category import ServiceCategory
@@ -242,4 +245,152 @@ def build_metric_response(
         "value": extract_metric(report, metric, category=category),
         "unit": metric_unit(report, metric),
         "threshold_minutes": report["threshold_minutes"],
+    }
+
+
+# --- All-cities summary (Brazil map) -----------------------------------------
+
+_LATEST_EXECUTIONS_SQL = text(
+    """
+    SELECT DISTINCT ON (e.city_id)
+           e.id AS execution_id, e.city_id, c.name, c.country,
+           e.processed_at, e.threshold_minutes
+    FROM execution e
+    JOIN city c ON c.id = e.city_id
+    WHERE e.status = 'completed'
+    ORDER BY e.city_id, e.processed_at DESC, e.id DESC
+    """
+)
+
+# Each node gets a bitmask of the categories reached within the threshold
+# (bit = 1 << category_id). Summing population per mask yields any
+# category combination without going back to the database.
+_POPULATION_MASKS_SQL = text(
+    """
+    WITH masks AS (
+        SELECT n.execution_id,
+               n.population_weight AS weight,
+               COALESCE(
+                   bit_or(CAST(1 AS BIGINT) << nr.category_id)
+                       FILTER (WHERE nr.within_threshold),
+                   0
+               ) AS mask
+        FROM node n
+        LEFT JOIN node_reachability nr ON nr.node_id = n.id
+        WHERE n.execution_id IN :execution_ids
+          AND n.population_weight > 0
+        GROUP BY n.id
+    )
+    SELECT execution_id, mask, SUM(weight) AS weight
+    FROM masks
+    GROUP BY execution_id, mask
+    """
+).bindparams(bindparam("execution_ids", expanding=True))
+
+_CITY_BOUNDARIES_SQL = text(
+    """
+    SELECT c.id, c.name, c.country,
+           ST_AsGeoJSON(ST_SimplifyPreserveTopology(c.geom_boundary, :tolerance), 5)
+               AS geometry
+    FROM city c
+    WHERE c.geom_boundary IS NOT NULL
+    ORDER BY c.name, c.country
+    """
+)
+
+# The masks query takes ~1.5 s for 200 cities; the result only changes when
+# a new execution lands, so it stays in memory until then.
+_masks_lock = threading.Lock()
+_masks_cache: dict[str, Any] = {"key": None, "masks": {}}
+
+
+def _population_masks(db: Session, latest: list[Any]) -> dict[int, dict[int, float]]:
+    # processed_at is part of the key because a recreated database may reuse ids.
+    key = tuple(sorted((row.execution_id, row.processed_at) for row in latest))
+    with _masks_lock:
+        if _masks_cache["key"] != key:
+            masks: dict[int, dict[int, float]] = defaultdict(dict)
+            if latest:
+                ids = [row.execution_id for row in latest]
+                for row in db.execute(_POPULATION_MASKS_SQL, {"execution_ids": ids}):
+                    masks[row.execution_id][int(row.mask)] = float(row.weight)
+            _masks_cache["key"] = key
+            _masks_cache["masks"] = dict(masks)
+        return _masks_cache["masks"]
+
+
+def coverage_from_masks(
+    masks: dict[int, float], required: int
+) -> tuple[float, float, float | None]:
+    """Return (total, population within every required category, percentage)."""
+    total = sum(masks.values())
+    within = sum(
+        weight for mask, weight in masks.items() if mask & required == required
+    )
+    return total, within, (100 * within / total if total else None)
+
+
+def build_city_summaries(
+    db: Session, category_codes: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """Latest population result of every city, with an optional category combination."""
+    category_ids = {
+        category.code: category.id for category in list_public_categories(db)
+    }
+    selected = sorted(set(category_codes)) if category_codes else sorted(category_ids)
+    unknown = [code for code in selected if code not in category_ids]
+    if unknown:
+        raise ValueError(f"Unknown categories: {', '.join(unknown)}")
+    required = 0
+    for code in selected:
+        required |= 1 << category_ids[code]
+
+    latest = db.execute(_LATEST_EXECUTIONS_SQL).all()
+    masks_by_execution = _population_masks(db, latest)
+    summaries = []
+    for row in latest:
+        masks = masks_by_execution.get(row.execution_id)
+        if not masks:
+            continue
+        total, within, percentage = coverage_from_masks(masks, required)
+        summaries.append(
+            {
+                "city_id": row.city_id,
+                "name": row.name,
+                "country": row.country,
+                "execution_id": row.execution_id,
+                "processed_at": row.processed_at,
+                "threshold_minutes": row.threshold_minutes,
+                "total_population": total,
+                "categories": {
+                    code: coverage_from_masks(masks, 1 << category_id)[2]
+                    for code, category_id in sorted(category_ids.items())
+                },
+                "selected_categories": selected,
+                "selected_population": within,
+                "selected_coverage_percentage": percentage,
+            }
+        )
+    summaries.sort(key=lambda item: (item["name"], item["country"]))
+    return summaries
+
+
+def build_city_boundaries(db: Session, tolerance: float = 0.002) -> dict[str, Any]:
+    """Simplified city outlines (~200 m) as one GeoJSON FeatureCollection."""
+    rows = db.execute(_CITY_BOUNDARIES_SQL, {"tolerance": tolerance}).all()
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": row.id,
+                "properties": {
+                    "city_id": row.id,
+                    "name": row.name,
+                    "country": row.country,
+                },
+                "geometry": json.loads(row.geometry),
+            }
+            for row in rows
+        ],
     }
