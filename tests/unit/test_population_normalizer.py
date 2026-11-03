@@ -154,9 +154,7 @@ def test_normalized_grid_is_accepted_by_main_loader(tmp_path, automatic_ids):
     )
     assert origins.total_weight == 10
     assert len(origins.origins) == 1
-    assert origins.origins[0].origin_id == (
-        "grid:1" if automatic_ids else "grid:001"
-    )
+    assert origins.origins[0].origin_id == ("grid:1" if automatic_ids else "grid:001")
 
 
 @pytest.mark.parametrize(
