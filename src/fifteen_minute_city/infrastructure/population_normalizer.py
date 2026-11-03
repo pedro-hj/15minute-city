@@ -19,20 +19,28 @@ def normalize(file, id_column, population_column, output):
     if id_column == population_column:
         raise ValueError("ID and population must use different columns")
 
-    # A large national grid may have many unrelated statistical columns.
-    grid = gpd.read_file(source, columns=[id_column, population_column])
+    # "SEM-ID" generates sequential IDs when the source has none.
+    automatic_ids = id_column == "SEM-ID"
+    columns = [population_column] if automatic_ids else [id_column, population_column]
+
+    # Read only the columns needed, even for large national grids.
+    grid = gpd.read_file(source, columns=columns)
     if grid.empty:
         raise ValueError("The input grid is empty")
     if grid.crs is None:
         raise ValueError("The input grid must have a coordinate reference system (CRS)")
 
-    for name in (id_column, population_column):
+    for name in columns:
         if name not in grid.columns or name == grid.geometry.name:
             raise ValueError(
                 f"Invalid column '{name}'. Available: {list(grid.columns)}"
             )
 
-    ids = grid[id_column].astype("string")
+    ids = (
+        pd.Series(range(1, len(grid) + 1), dtype="string")
+        if automatic_ids
+        else grid[id_column].astype("string")
+    )
     if ids.isna().any() or ids.str.strip().eq("").any() or ids.duplicated().any():
         raise ValueError("IDs must be nonempty and unique")
 
@@ -47,12 +55,15 @@ def normalize(file, id_column, population_column, output):
     if grid.geometry.isna().any() or grid.geometry.is_empty.any():
         raise ValueError("Every record must have a nonempty geometry")
 
-    normalized = grid[[id_column, population_column, grid.geometry.name]].copy()
-    normalized = normalized.rename(
-        columns={id_column: "ID", population_column: "POPULATION"}
-    ).rename_geometry("LOCATION")
-    normalized["ID"] = ids
-    normalized["POPULATION"] = population
+    normalized = gpd.GeoDataFrame(
+        {
+            "ID": ids.to_numpy(dtype=str),
+            "POPULATION": population.to_numpy(),
+            "LOCATION": grid.geometry.to_numpy(),
+        },
+        geometry="LOCATION",
+        crs=grid.crs,
+    )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     normalized.to_file(
@@ -71,10 +82,35 @@ def main(argv: list[str] | None = None) -> int:
         description="Normalize a population grid to ID, LOCATION, POPULATION",
     )
     parser.add_argument("--input", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--population-column", required=True)
-    parser.add_argument("--id-column", required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--population-column")
+    parser.add_argument(
+        "--id-column",
+        help='Source ID field, or "SEM-ID" to generate sequential IDs',
+    )
+    parser.add_argument(
+        "--list-columns",
+        action="store_true",
+        help="Show available input columns without normalizing",
+    )
     args = parser.parse_args(argv)
+
+    if args.list_columns:
+        try:
+            sample = gpd.read_file(args.input, rows=1)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        print("Available columns:")
+        for column in sample.columns:
+            print(f"  {column}")
+        return 0
+
+    for argument in ("output", "id_column", "population_column"):
+        if getattr(args, argument) is None:
+            parser.error(
+                f"--{argument.replace('_', '-')} is required unless --list-columns is used"
+            )
+
     try:
         result = normalize(
             args.input, args.id_column, args.population_column, args.output
