@@ -82,10 +82,58 @@ def test_cli_returns_success_and_produces_file(tmp_path, capsys):
     assert len(gpd.read_file(output)) == 3
 
 
-def test_normalized_grid_is_accepted_by_main_loader(tmp_path):
+def test_auto_ids_without_source_id_column(tmp_path):
+    source = tmp_path / "no_ids.gpkg"
+    original = gpd.read_file(make_grid(tmp_path))
+    original.drop(columns=["idcar_200m"]).to_file(source, driver="GPKG")
+
+    output = tmp_path / "normalized.gpkg"
+    assert (
+        main(
+            [
+                "--input",
+                str(source),
+                "--output",
+                str(output),
+                "--id-column",
+                "SEM-ID",
+                "--population-column",
+                "ind",
+            ]
+        )
+        == 0
+    )
+    saved = gpd.read_file(output)
+    assert saved["ID"].tolist() == ["1", "2", "3"]
+    assert saved["POPULATION"].tolist() == [10, 2.5, 0]
+    assert saved.crs.to_epsg() == 2154
+    with sqlite3.connect(output) as db:
+        assert db.execute(
+            "SELECT column_name FROM gpkg_geometry_columns"
+        ).fetchone() == ("LOCATION",)
+
+
+def test_list_columns_only_needs_input(tmp_path, capsys):
+    source = make_grid(tmp_path)
+    assert main(["--input", str(source), "--list-columns"]) == 0
+    result = capsys.readouterr().out
+    assert "idcar_200m" in result
+    assert "ind" in result
+    assert "geometry" in result
+
+
+def test_conversion_requires_arguments_without_list_columns(tmp_path, capsys):
+    with pytest.raises(SystemExit) as error:
+        main(["--input", str(make_grid(tmp_path))])
+    assert error.value.code == 2
+    assert "--output" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("automatic_ids", [False, True])
+def test_normalized_grid_is_accepted_by_main_loader(tmp_path, automatic_ids):
     source = make_grid(tmp_path)
     output = tmp_path / "out.gpkg"
-    normalize(source, "idcar_200m", "ind", output)
+    normalize(source, "SEM-ID" if automatic_ids else "idcar_200m", "ind", output)
 
     graph = nx.MultiDiGraph(crs="EPSG:4326")
     graph.add_node(10, x=4.795, y=45.725)
@@ -106,7 +154,9 @@ def test_normalized_grid_is_accepted_by_main_loader(tmp_path):
     )
     assert origins.total_weight == 10
     assert len(origins.origins) == 1
-    assert origins.origins[0].origin_id == "grid:001"
+    assert origins.origins[0].origin_id == (
+        "grid:1" if automatic_ids else "grid:001"
+    )
 
 
 @pytest.mark.parametrize(

@@ -25,7 +25,10 @@ uv sync
 O normalizador converte grades geográficas, como Shapefile ou GeoPackage,
 para um único formato com **ID**, **LOCATION** (geometria) e **POPULATION**
 (habitantes). Basta informar as colunas de ID e população; o sistema encontra
-automaticamente a geometria e preserva o CRS original.
+automaticamente a geometria e preserva o CRS original. Quando não houver
+coluna identificadora, use `--id-column "SEM-ID"` para criar IDs sequenciais.
+Para descobrir os nomes das colunas, execute o comando com
+`--input ARQUIVO --list-columns`, sem informar os demais argumentos.
 
 ```bash
 uv run fifteen-minute-city-normalize-population \
