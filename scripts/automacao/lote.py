@@ -10,7 +10,6 @@ import io
 import json
 import math
 import os
-from pathlib import Path
 import shlex
 import shutil
 import sqlite3
@@ -18,13 +17,16 @@ import subprocess
 import sys
 import time
 import unicodedata
+import zipfile
+from contextlib import suppress
+from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-import zipfile
 
 from monitoramento import (
     METRIC_FIELDS,
+    MONITOR_ERRORS,
     ResourceMonitor,
     environment_metadata,
     require_psutil,
@@ -229,25 +231,24 @@ def get_cities(code, selected, cache, refresh):
     )
     region_map = {r["code"]: r for r in selected}
     without_region = 0
-    with zipfile.ZipFile(archive) as zipped:
-        with zipped.open(f"{code}.txt") as raw:
-            for fields in csv.reader(
-                io.TextIOWrapper(raw, encoding="utf-8"), delimiter="\t"
+    with zipfile.ZipFile(archive) as zipped, zipped.open(f"{code}.txt") as raw:
+        for fields in csv.reader(
+            io.TextIOWrapper(raw, encoding="utf-8"), delimiter="\t"
+        ):
+            if (
+                len(fields) < 19
+                or fields[8] != code
+                or fields[6] != "P"
+                or fields[7] not in PPL_CODES
             ):
-                if (
-                    len(fields) < 19
-                    or fields[8] != code
-                    or fields[6] != "P"
-                    or fields[7] not in PPL_CODES
-                ):
-                    continue
-                region = region_map.get(fields[10])
-                if region:
-                    cities.append(
-                        city_record(fields[0], fields[1], region, code, "GeoNames")
-                    )
-                elif not fields[10] or fields[10] == "00":
-                    without_region += 1
+                continue
+            region = region_map.get(fields[10])
+            if region:
+                cities.append(
+                    city_record(fields[0], fields[1], region, code, "GeoNames")
+                )
+            elif not fields[10] or fields[10] == "00":
+                without_region += 1
     if without_region:
         print(f"Localidades sem divisão provincial válida ignoradas: {without_region}.")
     return cities
@@ -411,10 +412,8 @@ def run_city(command, project, log_path, sample_interval=1.0, metrics=None):
         def terminate_tree():
             if monitor is not None:
                 for _, child in monitor.processes():
-                    try:
+                    with suppress(*MONITOR_ERRORS):
                         child.terminate()
-                    except Exception:
-                        pass
             process.terminate()
             try:
                 process.wait(timeout=10)
@@ -432,7 +431,7 @@ def run_city(command, project, log_path, sample_interval=1.0, metrics=None):
                     started_utc,
                 )
                 monitor.start()
-            except Exception as exc:
+            except MONITOR_ERRORS as exc:
                 metrics.update(measurement_status="ERROR", monitoring_error=str(exc))
                 print(f"AVISO: monitoramento parcial/indisponível: {exc}", flush=True)
             assert process.stdout is not None
@@ -462,7 +461,7 @@ def run_city(command, project, log_path, sample_interval=1.0, metrics=None):
                     metrics.update(
                         monitor.finish(before, after, finished, finished_utc)
                     )
-                except Exception as exc:
+                except MONITOR_ERRORS as exc:
                     metrics.update(
                         measurement_status="ERROR", monitoring_error=str(exc)
                     )

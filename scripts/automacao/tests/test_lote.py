@@ -3,14 +3,14 @@ import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import sqlite3
 import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 import zipfile
+from pathlib import Path
+from unittest.mock import patch
 
 PACKAGE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE))
@@ -201,28 +201,9 @@ sys.exit(7 if city == 'Falha' else 0)
         archive = self.root / "CN.zip"
 
         def record(identifier, name, feature, region):
-            return "\t".join(
-                [
-                    identifier,
-                    name,
-                    name,
-                    "",
-                    "1",
-                    "1",
-                    "P",
-                    feature,
-                    "CN",
-                    "",
-                    region,
-                    "",
-                    "",
-                    "",
-                    "0",
-                    "",
-                    "",
-                    "Asia/Shanghai",
-                    "2026-01-01",
-                ]
+            return (
+                f"{identifier}\t{name}\t{name}\t\t1\t1\tP\t{feature}\tCN\t\t"
+                f"{region}\t\t\t\t0\t\t\tAsia/Shanghai\t2026-01-01"
             )
 
         with zipfile.ZipFile(archive, "w") as z:
@@ -262,13 +243,14 @@ sys.exit(7 if city == 'Falha' else 0)
     def test_launchers_country_and_forwarding_arguments(self):
         for path in PACKAGE.glob("*.sh"):
             result = subprocess.run(
-                ["bash", "-n", str(path)], capture_output=True, text=True
+                ["bash", "-n", str(path)], capture_output=True, text=True, check=False
             )
             self.assertEqual(result.returncode, 0, result.stderr)
         result = subprocess.run(
             ["bash", str(PACKAGE / "analisar_brasil.sh"), "--help"],
             capture_output=True,
             text=True,
+            check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--population-grid", result.stdout)
@@ -335,8 +317,9 @@ sys.exit(7 if city == 'Falha' else 0)
         self.assertTrue((self.root / "live.metricas.json").is_file())
 
     def test_sampled_cpu_fallback_and_missing_machine_counters(self):
-        from monitoramento import ResourceMonitor, utc_now
         import time
+
+        from monitoramento import ResourceMonitor, utc_now
 
         monitor = ResourceMonitor(
             os.getpid(), self.root / "fallback.csv", 0.1, time.monotonic(), utc_now()
@@ -355,9 +338,10 @@ sys.exit(7 if city == 'Falha' else 0)
             self.assertEqual(result["measurement_status"], "PARTIAL")
 
     def test_tree_memory_sampling_and_cpu_counter_aggregation_with_backend(self):
-        from monitoramento import ResourceMonitor, utc_now, MIB
-        from types import SimpleNamespace
         import time
+        from types import SimpleNamespace
+
+        from monitoramento import MIB, ResourceMonitor, utc_now
 
         monitor = ResourceMonitor(
             1, self.root / "tree.csv", 0.1, time.monotonic(), utc_now()

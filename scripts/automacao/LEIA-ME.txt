@@ -36,7 +36,7 @@ No Windows, use caminhos Windows; os caminhos /opt/... pertencem à VPS.
 ambiente Python isolado com psutil==7.2.2. Na primeira execução, pode haver
 download de Python/psutil; nas seguintes, o uv reutiliza seu cache. Isso não
 adiciona dependências ao pyproject.toml do TCC. A CLI usa o ambiente do projeto.
-Se chamar lote.py diretamente, use Python 3.10+ com psutil 7.2.2 instalado.
+Se chamar lote.py diretamente, use Python 3.12+ com psutil 7.2.2 instalado.
 A própria CLI e suas dependências precisam estar instaladas
 no projeto; não são distribuídas aqui. A conexão com o banco precisa funcionar
 no ambiente habitual do projeto (.env/DATABASE_URL, conforme sua configuração).

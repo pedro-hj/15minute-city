@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime, timezone
 import hashlib
 import importlib.metadata
-from pathlib import Path
 import platform
 import subprocess
 import sys
 import threading
 import time
+from datetime import UTC, datetime
+from pathlib import Path
 
 try:
     import psutil
 except ImportError:
     psutil = None
+
+MONITOR_ERRORS = (OSError, RuntimeError, ValueError) + (
+    (psutil.Error,) if psutil is not None else ()
+)
 try:
     import resource
 except ImportError:
@@ -76,7 +80,7 @@ SAMPLE_FIELDS = [
 
 
 def utc_now():
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
 def require_psutil():
@@ -115,6 +119,7 @@ def small_command(command, cwd):
             encoding="utf-8",
             errors="replace",
             timeout=10,
+            check=False,
         )
         return result.stdout.strip() if result.returncode == 0 else None
     except (OSError, subprocess.TimeoutExpired):
@@ -285,7 +290,7 @@ class ResourceMonitor:
         while not self.stop_event.wait(self.interval):
             try:
                 self.sample()
-            except Exception:
+            except MONITOR_ERRORS:
                 self.errors += 1
 
     def processes(self):
