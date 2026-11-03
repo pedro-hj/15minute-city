@@ -1,4 +1,5 @@
 import contextlib
+import gzip
 import importlib.util
 import io
 import json
@@ -455,6 +456,131 @@ sys.exit(7 if city == 'Falha' else 0)
         self.assertEqual(
             len(list((checkout / "logs/lotes").glob("BR_*/cidades.csv"))), 1
         )
+
+
+class CatalogueTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.cache = Path(self.temp.name)
+        self.url = lote.BR_API + "/estados?orderBy=nome"
+        self.data = [{"id": 35, "sigla": "SP", "nome": "São Paulo"}]
+        self.payload = json.dumps(self.data, ensure_ascii=False)
+
+    def response(self, body, content_type="application/json"):
+        response = io.BytesIO(body)
+        response.status = 200
+        response.headers = {"Content-Type": content_type}
+        return response
+
+    def test_catalogue_accepts_unicode_bom_and_gzip(self):
+        for encoding in ["utf-8-sig", "utf-16", "utf-32"]:
+            with self.subTest(encoding=encoding):
+                self.assertEqual(
+                    lote.parse_catalogue(self.payload.encode(encoding)), self.data
+                )
+        self.assertEqual(
+            lote.parse_catalogue(gzip.compress(self.payload.encode())), self.data
+        )
+
+    def test_bom_cache_is_read_without_request(self):
+        path = self.cache / (
+            lote.hashlib.sha256(self.url.encode()).hexdigest() + ".json"
+        )
+        path.write_bytes(self.payload.encode("utf-8-sig"))
+        with patch.object(lote, "urlopen") as request:
+            self.assertEqual(lote.get_json(self.url, self.cache, False), self.data)
+        request.assert_not_called()
+
+    def test_invalid_html_is_retried_before_publishing_cache(self):
+        responses = [
+            self.response(
+                b"<!DOCTYPE html><h1>Temporarily unavailable</h1>", "text/html"
+            ),
+            self.response(self.payload.encode("utf-8-sig")),
+        ]
+        with (
+            patch.object(lote, "urlopen", side_effect=responses) as request,
+            patch.object(lote.time, "sleep") as sleep,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(lote.get_json(self.url, self.cache, False), self.data)
+        self.assertEqual(request.call_count, 2)
+        sleep.assert_called_once_with(2)
+        self.assertEqual(
+            request.call_args.args[0].get_header("Accept"), "application/json"
+        )
+        cached = next(self.cache.glob("*.json"))
+        self.assertEqual(json.loads(cached.read_bytes()), self.data)
+        self.assertFalse(cached.read_bytes().startswith(b"\xef\xbb\xbf"))
+        self.assertFalse(list(self.cache.glob("*.response-error.json")))
+
+    def test_corrupted_cache_is_refetched(self):
+        path = self.cache / (
+            lote.hashlib.sha256(self.url.encode()).hexdigest() + ".json"
+        )
+        path.write_bytes(b"<html>broken cached response</html>")
+        with (
+            patch.object(
+                lote, "urlopen", return_value=self.response(self.payload.encode())
+            ) as request,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(lote.get_json(self.url, self.cache, False), self.data)
+        request.assert_called_once()
+        self.assertEqual(json.loads(path.read_bytes()), self.data)
+
+    def test_persistent_html_is_diagnosed_and_never_cached_as_catalogue(self):
+        responses = [
+            self.response(b"<html>Maintenance</html>", "text/html") for _ in range(3)
+        ]
+        with (
+            patch.object(lote, "urlopen", side_effect=responses) as request,
+            patch.object(lote.time, "sleep"),
+            contextlib.redirect_stdout(io.StringIO()),
+            self.assertRaisesRegex(RuntimeError, "Diagnóstico:"),
+        ):
+            lote.get_json(self.url, self.cache, False)
+        self.assertEqual(request.call_count, 3)
+        files = list(self.cache.glob("*.json"))
+        self.assertEqual(len(files), 1)
+        self.assertTrue(files[0].name.endswith(".response-error.json"))
+        diagnostic = json.loads(files[0].read_bytes())
+        self.assertEqual(diagnostic["http_status"], 200)
+        self.assertEqual(diagnostic["content_type"], "text/html")
+        self.assertIn("Maintenance", diagnostic["response_prefix"])
+
+    def test_http_503_then_valid_response_recovers(self):
+        error = lote.HTTPError(
+            self.url,
+            503,
+            "Service Unavailable",
+            {"Content-Type": "text/html"},
+            io.BytesIO(b"<html>Unavailable</html>"),
+        )
+        with (
+            patch.object(
+                lote,
+                "urlopen",
+                side_effect=[error, self.response(self.payload.encode())],
+            ) as request,
+            patch.object(lote.time, "sleep"),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(lote.get_json(self.url, self.cache, False), self.data)
+        self.assertEqual(request.call_count, 2)
+
+    def test_json_error_object_is_not_accepted_as_city_list(self):
+        responses = [
+            self.response(b'{"error":"temporary failure"}'),
+            self.response(self.payload.encode()),
+        ]
+        with (
+            patch.object(lote, "urlopen", side_effect=responses),
+            patch.object(lote.time, "sleep"),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(lote.get_json(self.url, self.cache, True), self.data)
 
 
 if __name__ == "__main__":

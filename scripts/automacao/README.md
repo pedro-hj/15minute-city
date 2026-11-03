@@ -57,6 +57,18 @@ usar outra instalação. `arquivos.example.json` contém os caminhos iniciais de
 Brasil e França. Os caminhos informados são salvos em `arquivos.json`, ignorado
 pelo Git. Também é possível copiar o modelo para esse arquivo e editá-lo.
 
+Na VPS configurada com o usuário `tcc`, execute as análises com esse usuário:
+
+```bash
+sudo -u tcc bash /opt/15minute-city/scripts/automacao/analisar_brasil.sh --region 0
+```
+
+As consultas de catálogos JSON aceitam BOM UTF-8/16/32 e respostas gzip. Respostas
+inválidas ou falhas HTTP são tentadas novamente até três vezes. Apenas listas
+JSON válidas entram no cache. Se todas as tentativas falharem, o caminho de um
+arquivo `*.response-error.json` é mostrado no terminal, com código HTTP,
+Content-Type e o início da resposta recebida. `--refresh` força uma nova consulta.
+
 O PBF e a grade devem cobrir a região escolhida. A grade deve ser um GPKG
 normalizado com uma única camada e colunas fixas `POPULATION` e `ID`.
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import hashlib
 import io
 import json
@@ -18,9 +19,10 @@ import sys
 import time
 import unicodedata
 import zipfile
+import zlib
 from contextlib import suppress
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -63,7 +65,7 @@ def norm(value):
 def load_json(path, default=None):
     if not path.exists():
         return {} if default is None else default
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def write_json(path, value):
@@ -104,14 +106,84 @@ def download(url, destination, refresh=False, ttl=86400):
     raise RuntimeError(f"Falha ao consultar {url}: {error}")
 
 
+def parse_catalogue(payload):
+    # json.loads(bytes) reconhece os marcadores BOM de UTF-8/16/32.
+    if payload.startswith(b"\x1f\x8b"):
+        payload = gzip.decompress(payload)
+    data = json.loads(payload)
+    if not isinstance(data, list):
+        raise TypeError("O catálogo deve retornar uma lista JSON.")
+    return data
+
+
 def get_json(url, cache, refresh):
-    name = hashlib.sha256(url.encode()).hexdigest() + ".json"
-    path = download(url, cache / name, refresh)
-    try:
-        return load_json(path)
-    except (ValueError, UnicodeError) as exc:
-        path.unlink(missing_ok=True)
-        raise RuntimeError(f"Resposta inválida de {url}. Tente novamente.") from exc
+    name = hashlib.sha256(url.encode()).hexdigest()
+    path = cache / (name + ".json")
+    diagnostic = cache / (name + ".response-error.json")
+    if not refresh and path.is_file() and time.time() - path.stat().st_mtime < 86400:
+        try:
+            return parse_catalogue(path.read_bytes())
+        except (ValueError, TypeError, OSError, EOFError, zlib.error):
+            print(
+                f"Cache de catálogo inválido; consultando novamente: {url}", flush=True
+            )
+            path.unlink(missing_ok=True)
+    cache.mkdir(parents=True, exist_ok=True)
+    error = None
+    for attempt in range(3):
+        body = b""
+        status = content_type = content_encoding = None
+        try:
+            print(f"Consultando: {url} (tentativa {attempt + 1}/3)", flush=True)
+            request = Request(
+                url,
+                headers={
+                    "User-Agent": "TCC-Cidade15-Batch/1.0",
+                    "Accept": "application/json",
+                    "Accept-Encoding": "identity",
+                },
+            )
+            with urlopen(request, timeout=90) as response:
+                status = response.status
+                content_type = response.headers.get("Content-Type")
+                content_encoding = response.headers.get("Content-Encoding")
+                body = response.read()
+            data = parse_catalogue(body)
+            # Só publica respostas válidas no cache, com codificação normalizada.
+            write_json(path, data)
+            diagnostic.unlink(missing_ok=True)
+            return data
+        except (OSError, URLError, ValueError, TypeError, EOFError, zlib.error) as exc:
+            error = exc
+            if isinstance(exc, HTTPError):
+                status = exc.code
+                content_type = exc.headers.get("Content-Type") if exc.headers else None
+                body = exc.read(512)
+                exc.close()
+            write_json(
+                diagnostic,
+                {
+                    "url": url,
+                    "attempt": attempt + 1,
+                    "http_status": status,
+                    "content_type": content_type,
+                    "content_encoding": content_encoding,
+                    "error": str(exc),
+                    "response_prefix": body[:512].decode("utf-8", errors="replace"),
+                    "response_prefix_hex": body[:32].hex(),
+                },
+            )
+            print(
+                f"Catálogo indisponível ou inválido: HTTP {status}, "
+                f"Content-Type={content_type}; {exc}",
+                flush=True,
+            )
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+    raise RuntimeError(
+        f"Não foi possível obter uma lista JSON válida de {url} após 3 tentativas. "
+        f"Diagnóstico: {diagnostic}. Último erro: {error}"
+    ) from error
 
 
 def get_regions(code, cache, refresh):
