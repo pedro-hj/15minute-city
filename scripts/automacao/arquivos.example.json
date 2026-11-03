@@ -1,0 +1,40 @@
+{
+  "countries": {
+    "BR": {
+      "pbf": "data/input/brazil/brazil-latest.osm.pbf",
+      "population_grid": "data/input/brazil/brasil_ibge_2022.gpkg"
+    },
+    "FR": {
+      "pbf": "data/input/france/france-261031.osm.pbf",
+      "population_grid": "data/input/france/france_2021.gpkg"
+    },
+    "ES": {
+      "pbf": "",
+      "population_grid": ""
+    },
+    "IT": {
+      "pbf": "",
+      "population_grid": ""
+    },
+    "AU": {
+      "pbf": "",
+      "population_grid": ""
+    },
+    "CN": {
+      "pbf": "",
+      "population_grid": ""
+    },
+    "NL": {
+      "pbf": "",
+      "population_grid": ""
+    },
+    "BE": {
+      "pbf": "",
+      "population_grid": ""
+    },
+    "US": {
+      "pbf": "",
+      "population_grid": ""
+    }
+  }
+}

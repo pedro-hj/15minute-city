@@ -1,0 +1,373 @@
+ANÁLISES EM LOTE — 15-MINUTE CITY
+================================
+
+1. INSTALAÇÃO E EXECUÇÃO
+
+Os scripts estão em scripts/automacao dentro do repositório.
+Mantenha lote.py, monitoramento.py, arquivos.example.json e os lançadores juntos.
+A raiz do projeto é detectada automaticamente a partir de pyproject.toml.
+Os caminhos escolhidos são salvos em arquivos.json, ignorado pelo Git.
+O pacote não altera o código da CLI. Cada análise usa o comando existente
+uv run fifteen-minute-city, com --enable-db, --output-mode simple e --verbose.
+
+Brasil, Linux (terminal interativo):
+  bash /opt/15minute-city/scripts/automacao/analisar_brasil.sh
+
+O script pergunta a UF. Aceita SP, 35 ou São Paulo. Digite 0 para o país inteiro.
+A listagem do IBGE é consultada na execução; nenhuma contagem foi fixada.
+O Distrito Federal segue a lista territorial oferecida pelo próprio IBGE.
+
+Brasil, sem pergunta interativa:
+  bash /opt/15minute-city/scripts/automacao/analisar_brasil.sh --region SP
+  bash /opt/15minute-city/scripts/automacao/analisar_brasil.sh --region 0
+
+Windows/PowerShell, executando na VPS por SSH:
+  ssh -t USUARIO@SERVIDOR 'bash /opt/15minute-city/scripts/automacao/analisar_brasil.sh'
+
+Use -t no SSH para permitir a pergunta interativa. Sem -t, informe --region:
+  ssh USUARIO@SERVIDOR 'bash /opt/15minute-city/scripts/automacao/analisar_brasil.sh --region SP'
+
+Windows/PowerShell, com o projeto e os dados instalados NO WINDOWS:
+  .\analisar_brasil.ps1 --project-dir 'C:\15minute-city' --region SP --pbf 'C:\dados\brasil.osm.pbf' --population-grid 'C:\dados\brasil.gpkg'
+
+Os lançadores .ps1 executam localmente. Eles não se conectam à VPS.
+No Windows, use caminhos Windows; os caminhos /opt/... pertencem à VPS.
+É necessário uv no PATH. Os lançadores .sh e .ps1 usam uv para preparar um
+ambiente Python isolado com psutil==7.2.2. Na primeira execução, pode haver
+download de Python/psutil; nas seguintes, o uv reutiliza seu cache. Isso não
+adiciona dependências ao pyproject.toml do TCC. A CLI usa o ambiente do projeto.
+Se chamar lote.py diretamente, use Python 3.10+ com psutil 7.2.2 instalado.
+A própria CLI e suas dependências precisam estar instaladas
+no projeto; não são distribuídas aqui. A conexão com o banco precisa funcionar
+no ambiente habitual do projeto (.env/DATABASE_URL, conforme sua configuração).
+
+2. PAÍSES E SELEÇÃO
+
+País            Lançador .sh/.ps1       Seleção
+Brasil          analisar_brasil        UF
+França          analisar_franca        região
+Espanha         analisar_espanha       comunidade autônoma
+Itália          analisar_italia        região
+Austrália       analisar_australia     estado/território
+China           analisar_china         divisão provincial
+Países Baixos   analisar_netherlands   província
+Bélgica         analisar_belgica       região
+Estados Unidos  analisar_estados_unidos estado
+
+Todos mostram os códigos e nomes disponíveis, e aceitam 0 para o país inteiro.
+Use código exibido ou nome completo. Os códigos do GeoNames são os de sua
+própria base: não presuma que são códigos ISO, FIPS atuais ou códigos nacionais.
+
+Exemplos Linux:
+  bash analisar_franca.sh
+  bash analisar_espanha.sh
+  bash analisar_italia.sh
+  bash analisar_australia.sh
+  bash analisar_china.sh
+  bash analisar_netherlands.sh
+  bash analisar_belgica.sh
+  bash analisar_estados_unidos.sh
+
+Exemplos PowerShell local (projeto e dados configurados em arquivos.json):
+  .\analisar_franca.ps1
+  .\analisar_espanha.ps1
+  .\analisar_italia.ps1
+  .\analisar_australia.ps1
+  .\analisar_china.ps1
+  .\analisar_netherlands.ps1
+  .\analisar_belgica.ps1
+  .\analisar_estados_unidos.ps1
+
+França por região, sem pergunta:
+  bash analisar_franca.sh --region 'Île-de-France'
+  .\analisar_franca.ps1 --region 'Île-de-France'
+
+3. ARQUIVOS DE ENTRADA
+
+As colunas são FIXAS: POPULATION contém os habitantes e ID identifica a célula.
+A grade deve estar normalizada em GPKG com uma única camada vetorial.
+Antes de iniciar o lote, o script confere a presença dessas duas colunas.
+Não usa dados populacionais do catálogo de nomes nas métricas.
+
+Brasil e França vêm com os caminhos conhecidos de suas análises anteriores.
+Se o caminho não existir, ou para outro país, o script procura na pasta padrão:
+  data/input/brazil
+  data/input/france
+  data/input/spain
+  data/input/italy
+  data/input/australia
+  data/input/china
+  data/input/netherlands
+  data/input/belgium
+  data/input/united-states
+
+Se houver só um arquivo com a extensão procurada, ele o seleciona. Se houver
+vários ou nenhum, pergunta o caminho completo. Escolha um GPKG normalizado,
+não a grade bruta ou um GPKG de feições OSM. PBF deve ser um ARQUIVO .osm.pbf,
+nunca apenas o diretório que o contém.
+
+Após validar as entradas, os caminhos são lembrados em arquivos.json.
+Também é possível copiar arquivos.example.json para arquivos.json e editar
+essa configuração antes da execução, ou passar os caminhos:
+  bash analisar_china.sh --region Shanghai --pbf /dados/china.osm.pbf --population-grid /dados/china.gpkg
+  .\analisar_china.ps1 --region Shanghai --pbf 'C:\dados\china.osm.pbf' --population-grid 'C:\dados\china.gpkg'
+
+Não são baixados PBFs nem grades populacionais. O script só baixa os catálogos
+de nomes. O PBF e a grade precisam cobrir a região selecionada. Para executar
+o país inteiro, seus arquivos precisam cobrir todo o território que pretende
+analisar, inclusive territórios separados quando aplicável. A existência dos
+arquivos e das colunas não comprova cobertura territorial: confira essa parte.
+
+4. FONTES E LIMITES DA LISTAGEM
+
+Brasil: API oficial do IBGE — municípios por UF.
+  https://servicodados.ibge.gov.br/api/docs/localidades
+
+França: API oficial de recorte administrativo — regiões e comunas atuais.
+  https://geo.api.gouv.fr/decoupage-administratif
+  https://geo.api.gouv.fr/decoupage-administratif/communes
+
+Espanha, Itália, Austrália, China, Países Baixos, Bélgica e Estados Unidos:
+GeoNames, usando o arquivo completo XX.zip de cada país e admin1CodesASCII.txt.
+  https://download.geonames.org/export/dump/readme.txt
+  https://www.geonames.org/export/codes.html
+
+O GeoNames NÃO é um cadastro oficial e exaustivo de municípios. A lista pode
+incluir vilas e outras localidades que não têm limite municipal próprio.
+Não foi usado cities500.zip: não há corte mínimo de população neste pacote.
+Entram PPL, PPLA/PPLA2/PPLA3/PPLA4/PPLA5, PPLC, PPLG e PPLL.
+São excluídos códigos de bairros/seções de localidades (PPLX), lugares
+históricos/abandonados e registros sem divisão administrativa identificada.
+Não há garantia de cobertura completa de municípios oficiais nesses sete países.
+
+A CLI recebe cidade + estado + país. Consultas com os mesmos três valores são
+consolidadas e rodam uma vez; localidades homônimas na mesma região podem
+precisar de nomes revistos manualmente. Os nomes do catálogo não garantem
+que Nominatim/OSM encontrará um POLÍGONO correspondente. O erro que ocorreu
+com Shanghai pode voltar a ocorrer: o lote registra a falha e segue adiante.
+O pacote não modifica o geocodificador nem inventa limites administrativos.
+
+As requisições usam HTTPS, tentativas e cache local em:
+  data/cache/catalogos_lotes
+Catálogos JSON e divisões: cache por 24 horas; ZIPs GeoNames: 7 dias.
+Use --refresh para atualizar as fontes que a execução consultar.
+
+5. CONFERIR A LISTA OU OS COMANDOS
+
+Exportar os nomes sem iniciar análises (não exige PBF ou grade):
+  bash analisar_brasil.sh --region SP --list-only
+  bash analisar_china.sh --region Shanghai --list-only
+  .\analisar_china.ps1 --region Shanghai --list-only
+
+O diretório do projeto deve existir mesmo na listagem, pois recebe o cache e
+o CSV. O caminho da lista cidades.csv é mostrado no terminal.
+
+Imprimir os comandos sem executá-los (precisa informar/configurar caminhos):
+  bash analisar_brasil.sh --region SP --dry-run --limit 3
+  .\analisar_brasil.ps1 --region SP --dry-run --limit 3
+
+Teste real limitado às três primeiras cidades da lista ordenada:
+  bash analisar_brasil.sh --region SP --limit 3
+  .\analisar_brasil.ps1 --region SP --limit 3
+
+ATENÇÃO: --limit sozinho EXECUTA análises reais e grava no banco.
+Somente --dry-run ou --list-only evitam a execução da CLI.
+
+Lista própria ou oficial revisada, substituindo a fonte online:
+  bash analisar_italia.sh --cities-csv /dados/cidades_italia.csv --region 0
+  .\analisar_italia.ps1 --cities-csv 'C:\dados\cidades_italia.csv' --region 0
+
+CSV UTF-8 separado por vírgulas com city e state obrigatórios; state_code e id
+são opcionais. Exemplo de estrutura (França):
+  city,state,state_code,id
+  Paris,Île-de-France,11,1
+  Lyon,Auvergne-Rhône-Alpes,84,2
+
+A coluna state será enviada literalmente para --state. Pode corrigir nomes
+para refletir o que seu geocodificador aceita. Se houver a coluna country,
+ela deve corresponder ao nome em inglês do país: Brazil, France, Spain, Italy,
+Australia, China, Netherlands, Belgium ou United States.
+Pode usar o próprio cidades.csv exportado como entrada revisada em outro lote.
+
+6. PROGRESSO, LOGS E RETOMADA
+
+Uma cidade por vez, dentro de cada execução. Não inicia análises em paralelo.
+Não inicie vários lançadores se deseja manter apenas uma análise ativa na VPS.
+
+O terminal mostra os logs da CLI e mensagens como:
+  [1/645] Adamantina — São Paulo — Brazil
+  [CONCLUÍDA] Adamantina | 42.0s | 1/645
+
+SUCESSO/CONCLUÍDA significa que a CLI retornou código de saída zero.
+Não é uma auditoria independente dos resultados nem da gravação no banco.
+Uma falha não impede a análise das próximas cidades.
+
+Cada execução gera uma pasta em:
+  /opt/15minute-city/logs/lotes/PAIS_DATA_HORA_IDENTIFICADOR
+
+Conteúdo:
+  cidades.csv        — lista efetivamente selecionada
+  resumo.csv         — status, duração, código de saída e log por cidade
+  cidade_000001.log  — saída completa da primeira análise, e assim por diante
+
+Execuções reais também mantêm progresso_PAIS.jsonl em logs/lotes.
+Para ignorar sucessos anteriores e tentar as demais:
+  bash analisar_brasil.sh --region SP --resume
+  .\analisar_brasil.ps1 --region SP --resume
+
+A retomada compara argumentos, diretório do projeto, caminho, tamanho e mtime
+do PBF e do GPKG. Não calcula hash do conteúdo de arquivos grandes nem compara
+versão da CLI, banco ou configuração da metodologia. Se apagar o banco, mudar
+o código, a metodologia ou desejar recalcular, execute SEM --resume.
+Sem --resume, todas as cidades selecionadas são executadas novamente.
+Dry-run e listagem nunca são tratados como análises concluídas.
+
+Ctrl+C interrompe o lote; a análise interrompida não é marcada como sucesso.
+O resumo das cidades já concluídas é preservado.
+Código final: 0 = sem falhas; 1 = alguma falha; 130 = interrupção.
+
+7. VERIFICAÇÃO DO PACOTE
+
+O motor foi verificado com catálogos e CLI simulados, cobrindo seleção,
+parâmetros, continuação após falha, retomada, interrupção, exportação científica
+e execução sem métricas falsas em dry-run/listagem/cidades ignoradas.
+A coleta de CPU também foi exercitada com um processo real e um filho.
+Neste executor, /proc não expõe os PIDs locais: o consumo RSS foi validado
+com um backend simulado, e a ausência de dados reais foi marcada como PARTIAL.
+A sintaxe dos nove lançadores Bash foi conferida. Não foram executadas análises
+reais na VPS, nem comprovada a disponibilidade de todos os downloads.
+Os lançadores PowerShell não foram executados neste ambiente Linux.
+
+8. ATRIBUIÇÃO
+
+GeoNames: dados sob Creative Commons Attribution 4.0.
+Crédito: GeoNames, https://www.geonames.org/.
+  https://creativecommons.org/licenses/by/4.0/
+
+Os catálogos podem mudar; os CSVs por execução preservam os nomes usados.
+
+9. LOG CIENTÍFICO DE DESEMPENHO
+
+A coleta é automática em todas as análises reais dos nove países.
+Não é necessário um parâmetro extra para habilitá-la.
+
+Novos arquivos, na mesma pasta de logs do lote:
+  metricas_cientificas.csv       — uma linha por cidade, com métricas e status
+  ambiente.json                 — hardware/software, entradas e metodologia de coleta
+  cidade_000001.recursos.csv     — série temporal da primeira cidade
+  cidade_000001.metricas.json    — métricas da primeira cidade e comando executado
+
+O resumo.csv e os logs de texto da versão anterior continuam existindo.
+As atualizações chegam pelo git pull. O arquivo local arquivos.json é
+ignorado pelo Git para preservar seus caminhos durante essas atualizações.
+
+Escopo: mede a execução COMPLETA de uv run fifteen-minute-city e os processos
+filhos observados. Inclui inicialização da CLI, sincronização feita pelo uv,
+downloads, leitura dos dados, construção/carregamento de caches, cálculos e
+gravação dos resultados. Não isola só o Dijkstra ou outra fase do algoritmo.
+A consulta dos catálogos, o registro de ambiente e o hash opcional dos arquivos
+acontecem antes das execuções medidas.
+
+Campos principais de metricas_cientificas.csv:
+
+Campo                                     Unidade e significado
+wall_seconds                              segundos de duração da execução da CLI
+started_at_utc / finished_at_utc            datas ISO 8601 em UTC
+cpu_user_seconds                          segundos de CPU em modo usuário
+cpu_system_seconds                        segundos de CPU em modo kernel
+cpu_total_seconds                         soma dos dois tempos de CPU
+cpu_time_method                           método de obtenção do tempo de CPU
+cpu_mean_percent_one_core                 100% equivale a um processador lógico ocupado
+cpu_mean_percent_machine                  percentual em relação aos CPUs lógicos visíveis
+logical_cpus_visible                      denominador dessa normalização
+rss_peak_sampled_mib                       maior soma de RSS observada na árvore
+rss_mean_sampled_mib                       RSS médio estimado, ponderado pelo tempo
+rss_peak_sampled_percent_machine           RSS máximo / RAM total visível pelo SO
+processes_peak_sampled                     maior número de processos observados juntos
+samples / samples_with_processes           quantidade de amostras / com processos visíveis
+sample_interval_seconds                   intervalo configurado de amostragem
+machine_cpu_mean_percent                  carga média geral de CPU da máquina
+machine_cpu_peak_sampled_percent           maior carga geral observada de CPU
+machine_ram_peak_percent                   maior uso percentual de RAM da máquina
+machine_ram_available_min_mib              menor RAM disponível observada na máquina
+machine_swap_peak_mib                      maior uso de swap observado na máquina
+machine_disk_read_bytes                    variação global de bytes lidos dos dispositivos
+machine_disk_write_bytes                   variação global de bytes escritos nos dispositivos
+machine_network_sent_bytes                 variação global de bytes enviados pela rede
+machine_network_received_bytes             variação global de bytes recebidos pela rede
+process_block_inputs / outputs             contadores de I/O de blocos, quando disponíveis
+process_minor_page_faults                  faltas de página sem I/O de disco, quando disponíveis
+process_major_page_faults                  faltas de página com I/O de disco, quando disponíveis
+measurement_status                        OK, PARTIAL, ERROR ou NOT_EXECUTED
+sample_errors                             número de erros de coleta
+series_csv / metrics_json                  caminhos das medições detalhadas
+
+Os nomes completos de I/O são process_block_inputs e process_block_outputs.
+MiB = 1.048.576 bytes. As séries por cidade usam as mesmas unidades dos nomes.
+
+CPU: 100% em cpu_mean_percent_one_core equivale a um processador lógico ocupado.
+Uma execução usando quatro processadores pode atingir 400%. O percentual da
+máquina divide esse valor pelo número de CPUs lógicos VISÍVEIS no sistema.
+Essa normalização não desconta quotas de cgroups ou limitações da VPS.
+
+Em Unix, os tempos de CPU e contadores de blocos/page faults usam a diferença
+de getrusage(RUSAGE_CHILDREN) antes da criação e após a espera do processo,
+incluindo descendentes cujas estatísticas foram recolhidas pelos pais.
+Em plataformas sem resource (Windows), o tempo de CPU é uma estimativa pela
+soma dos últimos contadores próprios observados por PID + data de criação.
+Isso evita contar o CPU de filhos reaproveitado no contador children_user do
+pai. Filhos muito rápidos ou o trecho final entre amostras podem ficar fora.
+Confira cpu_time_method antes de comparar plataformas.
+
+Memória: RSS é a memória residente, e não o tamanho dos arquivos nem a memória
+privativa da execução. A soma dos processos pode contar páginas compartilhadas
+mais de uma vez. Pico e média são ESTIMATIVAS POR AMOSTRAGEM; picos entre
+amostras e processos que surgem e terminam nesse intervalo podem ser perdidos.
+A média usa a última observação por intervalo com processos visíveis.
+
+O padrão é uma amostra por segundo. Para observar com mais frequência:
+  bash analisar_brasil.sh --region SP --sample-interval 0.5
+  .\analisar_brasil.ps1 --region SP --sample-interval 0.5
+
+Intervalo mínimo: 0.1 segundo. Amostrar mais frequentemente aumenta o custo
+do próprio monitor. A frequência real pode variar com a carga do sistema.
+
+Campos machine_* são CONTEXTO DA MÁQUINA, não consumo atribuído à análise.
+Incluem PostgreSQL, a API, outros usuários, serviços e o próprio monitor.
+O servidor PostgreSQL e outros serviços externos não são descendentes da CLI:
+seus recursos não entram na CPU/RSS da árvore medida.
+Os contadores globais de disco podem refletir dispositivos virtuais/empilhados;
+os caches do sistema também afetam leituras e escritas físicas observadas.
+Os contadores de I/O de blocos do processo não são convertidos em bytes.
+
+Medições indisponíveis ficam null no JSON e vazias no CSV, nunca zero por falta
+de dados. PARTIAL indica falha de alguma coleta ou ausência de processos
+visíveis. OK significa que a coleta prevista funcionou; não significa medição
+sem erro de amostragem. Falha/interrupção da CLI preserva medições obtidas.
+Cidades puladas por --resume e dry-run recebem NOT_EXECUTED e campos vazios.
+Essas linhas não devem ser tratadas como execuções com consumo zero.
+
+ambiente.json registra CPUs, afinidade quando disponível, RAM/swap visíveis,
+limites de cgroups v2 se expostos, SO, versão do monitor e do psutil, versão do
+uv, commit/alterações rastreadas no Git quando disponíveis, uv.lock e pacotes
+encontrados em .venv antes do lote. Não lê nem exporta senhas, .env ou DATABASE_URL.
+Pacotes antes do lote podem diferir dos usados se uv sincronizar o ambiente.
+
+PBF e GPKG são identificados por caminho, tamanho e mtime. Para também registrar
+um SHA256 integral dos dados de entrada:
+  bash analisar_brasil.sh --region SP --hash-inputs
+  .\analisar_brasil.ps1 --region SP --hash-inputs
+
+O hash lê os arquivos completos e pode demorar; acontece antes da medição das
+cidades, mas também pode aquecer o cache do SO. Não use --hash-inputs só em um
+dos grupos de uma comparação de desempenho sem considerar esse efeito.
+
+Para comparação científica, mantenha a versão/metodologia e os arquivos de
+entrada constantes e registre se está avaliando cache frio ou aquecido.
+Este pacote não limpa caches automaticamente, não classifica o cache como
+frio/quente e não mede consumo de energia. Tempos curtos com cache existente
+não representam necessariamente o custo de uma primeira análise.
+
+Referências da coleta:
+  https://psutil.io/
+  https://docs.python.org/3/library/resource.html

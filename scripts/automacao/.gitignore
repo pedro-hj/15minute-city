@@ -1,0 +1,4 @@
+# Caminhos da instalação local; o modelo versionado fica em arquivos.example.json.
+arquivos.json
+arquivos.json.tmp
+__pycache__/
