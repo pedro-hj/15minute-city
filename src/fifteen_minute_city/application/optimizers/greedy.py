@@ -4,8 +4,6 @@ import heapq
 import math
 import time
 
-import numpy as np
-
 from fifteen_minute_city.application.optimizers.base import (
     BaseLocationOptimizer,
     OptimizationResult,
@@ -23,7 +21,7 @@ def _dijkstra_within_threshold(
     source_node: int,
     max_seconds: float,
 ) -> dict[int, float]:
-    """Calculate walking times from source_node, stopping at max_seconds."""
+    """Find origins that can reach a service at source_node within max_seconds."""
     distances: dict[int, float] = {source_node: 0.0}
     heap: list[tuple[float, int]] = [(0.0, source_node)]
 
@@ -60,7 +58,7 @@ def _haversine_distance_m(
 
 
 class GreedyLocationOptimizer(BaseLocationOptimizer):
-    """greedy optimizer for service allocation based on population marginal gain."""
+    """Select graph nodes by their marginal gain in population coverage."""
 
     def optimize(
         self,
@@ -73,8 +71,7 @@ class GreedyLocationOptimizer(BaseLocationOptimizer):
         candidate_pool: list[int] | None = None,
     ) -> OptimizationResult:
         start_time = time.perf_counter()
-        # 1. Validações de entrada
-        if k < 1:
+        if isinstance(k, bool) or not isinstance(k, int) or k < 1:
             raise ValueError(f"k must be at least 1, got {k}")
         categories = bundle.metadata.get("categories", [])
         if category not in categories:
@@ -82,37 +79,48 @@ class GreedyLocationOptimizer(BaseLocationOptimizer):
                 f"Category '{category}' not found in bundle. Available: {categories}"
             )
         category_index = categories.index(category)
-        # 2. Configurações de tempo e população
-        threshold_sec = (
-            threshold_minutes * 60.0
+        threshold = (
+            threshold_minutes
             if threshold_minutes is not None
-            else float(bundle.metadata["threshold_minutes"]) * 60.0
+            else float(bundle.metadata["threshold_minutes"])
         )
+        if not math.isfinite(threshold) or threshold <= 0:
+            raise ValueError("threshold_minutes must be finite and greater than zero")
+        if not math.isfinite(min_distance_m) or min_distance_m < 0:
+            raise ValueError("min_distance_m must be finite and non-negative")
+        threshold_sec = threshold * 60.0
+        if not math.isfinite(threshold_sec):
+            raise ValueError("threshold_minutes is too large")
         total_population = float(bundle.population.sum())
         if total_population <= 0:
             raise ValueError("Bundle has no valid population")
-        # 3. Estado de cobertura atual (baseline)
         baseline_times = bundle.baseline[:, category_index]
         currently_covered = baseline_times <= threshold_sec
         baseline_coverage_pct = (
             100.0 * float(bundle.population[currently_covered].sum()) / total_population
         )
-        # 4. Seleção do espaço de candidatos
-        if candidate_pool is not None:
-            candidates = set(candidate_pool)
+        if candidate_pool is None:
+            # Transit nodes without residents may serve several populated nodes.
+            candidates = list(range(bundle.node_count))
         else:
-            # Por padrão: nós desatendidos com população residente positiva
-            unserved_nodes = np.where((~currently_covered) & (bundle.population > 0))[0]
-            candidates = {int(n) for n in unserved_nodes}
+            if any(
+                isinstance(node, bool)
+                or not isinstance(node, int)
+                or node < 0
+                or node >= bundle.node_count
+                for node in candidate_pool
+            ):
+                raise ValueError("candidate_pool contains an invalid graph node index")
+            candidates = sorted(set(candidate_pool))
         proposed: list[ProposedLocation] = []
         selected_nodes: list[int] = []
-        # 5. Loop Guloso para encontrar k pontos
         for rank in range(1, k + 1):
+            if not ((bundle.population > 0) & ~currently_covered).any():
+                break
             best_node: int | None = None
             best_gain = -1.0
             best_reached_nodes: dict[int, float] = {}
             for candidate in candidates:
-                # Restrição de distância mínima em relação aos já selecionados
                 if min_distance_m > 0 and selected_nodes:
                     c_lon, c_lat = (
                         bundle.coordinates[candidate, 0],
@@ -130,9 +138,7 @@ class GreedyLocationOptimizer(BaseLocationOptimizer):
                     )
                     if too_close:
                         continue
-                # Dijkstra podado aos 15 minutos
                 reached = _dijkstra_within_threshold(bundle, candidate, threshold_sec)
-                # Ganho Marginal: soma da população de nós alcançados que AINDA NÃO estão cobertos
                 marginal_pop = 0.0
                 for node_id in reached:
                     if not currently_covered[node_id]:
@@ -141,10 +147,8 @@ class GreedyLocationOptimizer(BaseLocationOptimizer):
                     best_gain = marginal_pop
                     best_node = candidate
                     best_reached_nodes = reached
-            # Se não encontrou nenhum candidato viável ou o ganho for zero, encerra
             if best_node is None or best_gain <= 0:
                 break
-            # Registra o ponto escolhido
             best_lon, best_lat = (
                 float(bundle.coordinates[best_node, 0]),
                 float(bundle.coordinates[best_node, 1]),
@@ -158,12 +162,10 @@ class GreedyLocationOptimizer(BaseLocationOptimizer):
                     marginal_population=best_gain,
                 )
             )
-            # Atualiza o estado: nós recém-atendidos agora estão cobertos
             selected_nodes.append(best_node)
-            candidates.discard(best_node)
+            candidates.remove(best_node)
             for node_id in best_reached_nodes:
                 currently_covered[node_id] = True
-        # 6. Cálculo da cobertura final simulada
         simulated_coverage_pct = (
             100.0 * float(bundle.population[currently_covered].sum()) / total_population
         )
