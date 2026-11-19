@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -177,3 +177,35 @@ class SimulationResponse(BaseModel):
     results: dict[str, SimulationCategoryResults]
     overall: SimulationOverallResults
     processing_time_ms: float
+
+
+class OptimizationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    category: str = Field(min_length=1, max_length=100)
+    algorithm: Literal["greedy"] = "greedy"
+    k: int = Field(default=1, ge=1, le=3, strict=True)
+    threshold_minutes: float | None = Field(default=None, gt=0)
+    min_distance_m: float = Field(default=0.0, ge=0)
+
+
+class OptimizedLocationResponse(BaseModel):
+    rank: int
+    node_id: int
+    latitude: float
+    longitude: float
+    marginal_population: float
+
+
+class OptimizationResponse(BaseModel):
+    execution_id: int
+    algorithm: Literal["greedy"]
+    category: str
+    k_requested: int
+    threshold_minutes: float
+    min_distance_m: float
+    locations: list[OptimizedLocationResponse]
+    baseline_coverage_percentage: float
+    simulated_coverage_percentage: float
+    coverage_delta_percentage_points: float
+    execution_time_seconds: float
