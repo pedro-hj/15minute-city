@@ -163,6 +163,25 @@ def test_api_requires_prepared_package(monkeypatch):
     assert error.value.status_code == 404
 
 
+def test_simulation_is_unaffected_by_optimization_node_limit(monkeypatch):
+    monkeypatch.setenv("OPTIMIZATION_MAX_NODES", "2")
+    monkeypatch.setattr(
+        routes.service, "get_completed_execution", lambda _db, _id: object()
+    )
+    monkeypatch.setattr(
+        routes, "load_execution_package", lambda _folder, _id: sample_bundle()
+    )
+    scenario = SimulationRequest.model_validate(
+        {"services": [{"category": "health", "latitude": 0, "longitude": 0.01}]}
+    )
+
+    result = routes.simulate_execution(7, scenario, object())
+
+    assert (
+        result["results"]["health"]["population"]["after"]["coverage_percentage"] == 100
+    )
+
+
 def test_simulation_reports_overall_before_and_after():
     result = simulate(
         sample_bundle(),
