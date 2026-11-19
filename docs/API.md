@@ -2,7 +2,7 @@
 
 ## 1. Catálogo completo de endpoints
 
-As rotas de consulta utilizam `GET`; simulações utilizam `POST`. Os parâmetros entre chaves são substituídos por valores reais.
+As rotas de consulta utilizam `GET`; simulações e otimizações utilizam `POST`. Os parâmetros entre chaves são substituídos por valores reais.
 
 | Método e caminho | Finalidade |
 | --- | --- |
@@ -10,12 +10,13 @@ As rotas de consulta utilizam `GET`; simulações utilizam `POST`. Os parâmetro
 | `GET /api/v1/version` | Informa nome e versão da API. |
 | `GET /api/v1/cities` | Lista municípios cadastrados. |
 | `GET /api/v1/cities/summary` | Resultado populacional mais recente de todos os municípios numa única chamada. Aceita `?categories=health,culture` para calcular a cobertura de uma combinação (pessoas que alcançam todas as categorias escolhidas); sem o parâmetro, usa todas e coincide com `overall_coverage_percentage`. |
-| `GET /api/v1/cities/boundaries` | Contornos simplificados (cerca de 200 m) de todos os municípios em um único GeoJSON `FeatureCollection`, para o mapa geral. |
+| `GET /api/v1/cities/boundaries` | Contornos previamente simplificados (cerca de 200 m) de todos os municípios em um único GeoJSON `FeatureCollection`, para o mapa geral. |
 | `GET /api/v1/cities/{city_id}` | Obtém um município específico. |
 | `GET /api/v1/categories` | Lista as categorias registradas. |
 | `GET /api/v1/cities/{city_id}/executions` | Lista execuções concluídas do município. |
 | `GET /api/v1/executions/{execution_id}` | Retorna um resultado detalhado por execução concluída. |
 | `POST /api/v1/executions/{execution_id}/simulate` | Adiciona serviços hipotéticos e retorna os indicadores recalculados pela VPS, sem modificar a análise original. |
+| `POST /api/v1/executions/{execution_id}/optimize` | Recomenda pontos para novos serviços de uma categoria, usando a análise concluída sem alterá-la. |
 | `GET /api/v1/cities/{city_id}/latest` | Retorna o resultado detalhado da execução concluída mais recente. |
 | `GET /api/v1/cities/{city_id}/latest/{strategy}` | Retorna o relatório completo de uma estratégia. |
 | `GET /api/v1/cities/{city_id}/latest/{strategy}/{metric}` | Consulta uma métrica geral da última execução. |
@@ -222,6 +223,69 @@ pública para baixar FMC1. A exportação manual permanece disponível
 para análises já concluídas. Consulte `docs/SIMULATIONS.md` para o
 fluxo completo e o comando de recuperação.
 
+### 3.5. Recomendação de novos serviços
+
+```http
+POST /api/v1/executions/12/optimize
+X-API-Key: SUA_CHAVE
+Content-Type: application/json
+
+{
+  "category": "health",
+  "k": 2,
+  "algorithm": "greedy",
+  "threshold_minutes": 15,
+  "min_distance_m": 300
+}
+```
+
+`algorithm` é opcional e usa `greedy` por padrão; é o único algoritmo
+disponível nesta versão. `k` também é opcional, com padrão 1 e limite de 3.
+`threshold_minutes` usa o valor da execução quando omitido. `min_distance_m`
+tem padrão zero e limita a proximidade entre os novos pontos sugeridos.
+A categoria deve fazer parte da execução analisada. A otimização considera
+todos os nós do grafo como candidatos, inclusive nós sem moradores.
+
+Resposta ilustrativa (valores fictícios):
+
+```json
+{
+  "execution_id": 12,
+  "algorithm": "greedy",
+  "category": "health",
+  "k_requested": 2,
+  "threshold_minutes": 15.0,
+  "min_distance_m": 300.0,
+  "locations": [
+    {
+      "rank": 1,
+      "node_id": 123,
+      "latitude": -24.031453,
+      "longitude": -46.491341,
+      "marginal_population": 1250.0
+    }
+  ],
+  "baseline_coverage_percentage": 72.0,
+  "simulated_coverage_percentage": 78.0,
+  "coverage_delta_percentage_points": 6.0,
+  "execution_time_seconds": 0.8
+}
+```
+
+`locations` pode conter menos de `k` pontos, inclusive nenhum, quando não há
+ganho adicional de cobertura. `node_id` é o índice do nó no pacote FMC1;
+latitude e longitude estão em WGS84. `marginal_population` é a população
+adicional atendida pelo ponto naquela etapa. A cobertura apresentada é
+populacional e se refere somente à categoria solicitada. O algoritmo guloso
+maximiza o ganho em cada etapa, sem garantir a melhor combinação global para
+`k > 1`. A resposta não grava estabelecimentos ou resultados no banco.
+
+A rota síncrona aceita por padrão pacotes com até 10.000 nós. O administrador
+pode ajustar `OPTIMIZATION_MAX_NODES` após medir tempo e memória com dados reais.
+Pacotes maiores retornam `503` sem iniciar a busca. O tempo informado mede
+somente o algoritmo, sem incluir o carregamento inicial do FMC1 ou a rede.
+Esse limite se aplica apenas a `/optimize`; a rota `/simulate` não o consulta.
+
 ## 4. Códigos de resposta e erros comuns
 
 | HTTP | Situação | Ação recomendada |
@@ -229,8 +293,8 @@ fluxo completo e o comando de recuperação.
 | `200` | Consulta bem-sucedida. | Ler o JSON; listas vazias são possíveis. |
 | `401` | Chave ausente ou inválida em `/api/v1/`. | Conferir `X-API-Key` sem divulgar a chave. |
 | `404` | Município, execução, categoria, estratégia, métrica ou pacote de simulação indisponível. | Consultar IDs, códigos e execuções concluídas; preparar o pacote FMC1, se necessário. |
-| `422` | Parâmetro inválido, como `limit=0` ou ID não numérico. | Corrigir tipos e limites informados. |
-| `503` | Autenticação não configurada ou pacote de simulação corrompido/indisponível. | Conferir `API_KEYS` e integridade do FMC1. |
+| `422` | Parâmetro inválido, como `limit=0`, categoria não analisada ou `k` fora do intervalo de 1 a 3. | Corrigir tipos e limites informados. |
+| `503` | Autenticação não configurada, pacote FMC1 inválido ou otimização acima do limite síncrono de nós. | Conferir `API_KEYS`, integridade do FMC1 e `OPTIMIZATION_MAX_NODES`. |
 | `500` | Falha inesperada, incluindo possíveis problemas de banco. | Consultar logs do serviço e saúde do banco. |
 
 **Atenção:** a rota `/health` confirma que o servidor HTTP responde, mas **não verifica a conectividade com o banco de dados**. Uma consulta às cidades autenticada é um teste mais abrangente.
