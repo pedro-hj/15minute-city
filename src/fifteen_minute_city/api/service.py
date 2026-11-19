@@ -290,10 +290,9 @@ _POPULATION_MASKS_SQL = text(
 _CITY_BOUNDARIES_SQL = text(
     """
     SELECT c.id, c.name, c.country,
-           ST_AsGeoJSON(ST_SimplifyPreserveTopology(c.geom_boundary, :tolerance), 5)
-               AS geometry
+           ST_AsGeoJSON(c.geom_boundary_simplified, 5) AS geometry
     FROM city c
-    WHERE c.geom_boundary IS NOT NULL
+    WHERE c.geom_boundary_simplified IS NOT NULL
     ORDER BY c.name, c.country
     """
 )
@@ -375,9 +374,9 @@ def build_city_summaries(
     return summaries
 
 
-def build_city_boundaries(db: Session, tolerance: float = 0.002) -> dict[str, Any]:
-    """Simplified city outlines (~200 m) as one GeoJSON FeatureCollection."""
-    rows = db.execute(_CITY_BOUNDARIES_SQL, {"tolerance": tolerance}).all()
+def build_city_boundaries(db: Session) -> dict[str, Any]:
+    """Precomputed city outlines (~200 m) as one GeoJSON FeatureCollection."""
+    rows = db.execute(_CITY_BOUNDARIES_SQL).all()
     return {
         "type": "FeatureCollection",
         "features": [
