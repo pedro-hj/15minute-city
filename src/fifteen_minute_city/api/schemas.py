@@ -187,6 +187,9 @@ class OptimizationRequest(BaseModel):
     k: int = Field(default=1, ge=1, le=3, strict=True)
     threshold_minutes: float | None = Field(default=None, gt=0)
     min_distance_m: float = Field(default=0.0, ge=0)
+    existing_services: list[SimulationServiceInput] = Field(
+        default_factory=list, max_length=200
+    )
 
 
 class OptimizedLocationResponse(BaseModel):
@@ -206,6 +209,8 @@ class OptimizationResponse(BaseModel):
     min_distance_m: float
     locations: list[OptimizedLocationResponse]
     baseline_coverage_percentage: float
+    initial_coverage_percentage: float
+    incremental_coverage_delta_percentage_points: float
     simulated_coverage_percentage: float
     coverage_delta_percentage_points: float
     execution_time_seconds: float

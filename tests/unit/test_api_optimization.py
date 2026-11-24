@@ -151,6 +151,65 @@ def test_optimization_http_requires_api_key(configured_api):
     assert status == 401
 
 
+def test_optimization_http_continues_with_manual_and_previous_services(configured_api):
+    body = {
+        "category": "health",
+        "k": 1,
+        "threshold_minutes": 1,
+        "existing_services": [
+            {
+                "category": "health",
+                "latitude": 0,
+                "longitude": 0,
+                "name": "Manual service",
+            }
+        ],
+    }
+    status, result = asyncio.run(_post_optimization(body))
+    assert status == 200
+    assert result["baseline_coverage_percentage"] == 0
+    assert result["initial_coverage_percentage"] == 50
+    assert result["simulated_coverage_percentage"] == 100
+    assert result["coverage_delta_percentage_points"] == 100
+    assert result["incremental_coverage_delta_percentage_points"] == 50
+    point = result["locations"][0]
+    assert point["node_id"] == 2
+    body["existing_services"].append(
+        {
+            "category": "health",
+            "latitude": point["latitude"],
+            "longitude": point["longitude"],
+        }
+    )
+    status, continued = asyncio.run(_post_optimization(body))
+    assert status == 200
+    assert continued["locations"] == []
+    assert continued["initial_coverage_percentage"] == 100
+    assert continued["incremental_coverage_delta_percentage_points"] == 0
+
+
+@pytest.mark.parametrize(
+    "services",
+    [
+        [{"category": "health", "latitude": 91, "longitude": 0}],
+        [{"category": "health", "latitude": 80, "longitude": 80}],
+        [{"category": "culture", "latitude": 0, "longitude": 0}],
+        [{"category": "health", "latitude": 0}],
+        [{"category": "health", "latitude": 0, "longitude": 0}] * 201,
+    ],
+)
+def test_optimization_http_validates_existing_services(configured_api, services):
+    status, _result = asyncio.run(
+        _post_optimization(
+            {
+                "category": "health",
+                "existing_services": services,
+            }
+        )
+    )
+    assert status == 422
+
+
 @pytest.mark.parametrize(
     "body",
     [

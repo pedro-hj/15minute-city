@@ -274,6 +274,7 @@ def optimize_execution(
             request.k,
             threshold_minutes=request.threshold_minutes,
             min_distance_m=request.min_distance_m,
+            existing_services=[item.model_dump() for item in request.existing_services],
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

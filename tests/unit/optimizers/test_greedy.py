@@ -1,4 +1,5 @@
 import networkx as nx
+import numpy as np
 import pytest
 
 from fifteen_minute_city.application.optimizers import create_optimizer
@@ -76,6 +77,96 @@ def test_greedy_validates_invalid_inputs():
 def test_optimizer_factory_rejects_unknown_strategy():
     with pytest.raises(ValueError, match="Unknown optimization strategy"):
         create_optimizer("unknown")
+
+
+def _existing_service(node, category="health"):
+    return {"category": category, "latitude": 0.0, "longitude": node * 0.005}
+
+
+def test_consecutive_optimization_matches_single_run_without_mutation():
+    bundle = create_mock_bundle()
+    before = bundle.baseline.copy()
+    optimizer = GreedyLocationOptimizer()
+    first = optimizer.optimize(bundle, "health", k=1)
+    location = first.locations[0]
+    second = optimizer.optimize(
+        bundle,
+        "health",
+        k=1,
+        existing_services=[
+            {
+                "category": "health",
+                "latitude": location.latitude,
+                "longitude": location.longitude,
+            }
+        ],
+    )
+    combined = optimizer.optimize(bundle, "health", k=2)
+    assert [p.node_id for p in first.locations + second.locations] == [
+        p.node_id for p in combined.locations
+    ]
+    assert second.initial_coverage_percentage == first.simulated_coverage_percentage
+    assert (
+        second.simulated_coverage_percentage == combined.simulated_coverage_percentage
+    )
+    assert second.locations[0].marginal_population == 20
+    assert second.incremental_coverage_delta_percentage_points == pytest.approx(
+        100 - first.simulated_coverage_percentage, abs=1e-6
+    )
+    np.testing.assert_array_equal(bundle.baseline, before)
+    assert optimizer.optimize(bundle, "health").locations == first.locations
+
+
+def test_manual_services_are_deduplicated_and_respect_distance():
+    optimizer = GreedyLocationOptimizer()
+    bundle = create_mock_bundle()
+    services = [_existing_service(2)] * 2
+    result = optimizer.optimize(bundle, "health", existing_services=services)
+    assert [p.node_id for p in result.locations] == [1]
+    restricted = optimizer.optimize(
+        bundle, "health", existing_services=services, min_distance_m=600
+    )
+    assert restricted.locations == ()
+    assert restricted.incremental_coverage_delta_percentage_points == 0
+
+
+def test_other_categories_do_not_change_optimization():
+    optimizer = GreedyLocationOptimizer()
+    bundle = create_mock_bundle()
+    result = optimizer.optimize(
+        bundle, "health", existing_services=[_existing_service(2, "education")]
+    )
+    assert result.locations == optimizer.optimize(bundle, "health").locations
+    assert result.initial_coverage_percentage == result.baseline_coverage_percentage
+
+
+def test_existing_services_can_cover_all_population():
+    result = GreedyLocationOptimizer().optimize(
+        create_mock_bundle(),
+        "health",
+        existing_services=[_existing_service(1), _existing_service(2)],
+    )
+    assert result.locations == ()
+    assert (
+        result.initial_coverage_percentage
+        == result.simulated_coverage_percentage
+        == 100
+    )
+
+
+@pytest.mark.parametrize(
+    "service",
+    [
+        {"category": "culture", "latitude": 0, "longitude": 0},
+        {"category": "health", "latitude": 80, "longitude": 80},
+        {"category": "health", "latitude": float("nan"), "longitude": 0},
+    ],
+)
+def test_existing_services_are_validated(service):
+    with pytest.raises(ValueError):
+        GreedyLocationOptimizer().optimize(
+            create_mock_bundle(), "health", existing_services=[service]
+        )
 
 
 def test_greedy_considers_unpopulated_transit_nodes():

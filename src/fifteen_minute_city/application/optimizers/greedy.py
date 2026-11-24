@@ -13,6 +13,8 @@ from fifteen_minute_city.application.server_simulation import (
     EARTH_RADIUS_M,
     RAD,
     SimulationBundle,
+    _dijkstra,
+    place_services,
 )
 
 
@@ -69,6 +71,7 @@ class GreedyLocationOptimizer(BaseLocationOptimizer):
         threshold_minutes: float | None = None,
         min_distance_m: float = 0.0,
         candidate_pool: list[int] | None = None,
+        existing_services: list[dict] | None = None,
     ) -> OptimizationResult:
         start_time = time.perf_counter()
         if isinstance(k, bool) or not isinstance(k, int) or k < 1:
@@ -99,6 +102,13 @@ class GreedyLocationOptimizer(BaseLocationOptimizer):
         baseline_coverage_pct = (
             100.0 * float(bundle.population[currently_covered].sum()) / total_population
         )
+        sources, _placed = place_services(bundle, existing_services or [])
+        existing_nodes = sources.get(category_index, set())
+        if existing_nodes:
+            currently_covered |= _dijkstra(bundle, existing_nodes) <= threshold_sec
+        initial_coverage_pct = (
+            100.0 * float(bundle.population[currently_covered].sum()) / total_population
+        )
         if candidate_pool is None:
             # Transit nodes without residents may serve several populated nodes.
             candidates = list(range(bundle.node_count))
@@ -112,8 +122,9 @@ class GreedyLocationOptimizer(BaseLocationOptimizer):
             ):
                 raise ValueError("candidate_pool contains an invalid graph node index")
             candidates = sorted(set(candidate_pool))
+        candidates = [node for node in candidates if node not in existing_nodes]
         proposed: list[ProposedLocation] = []
-        selected_nodes: list[int] = []
+        selected_nodes: list[int] = sorted(existing_nodes)
         for rank in range(1, k + 1):
             if not ((bundle.population > 0) & ~currently_covered).any():
                 break
@@ -175,6 +186,7 @@ class GreedyLocationOptimizer(BaseLocationOptimizer):
             category=category,
             locations=tuple(proposed),
             baseline_coverage_percentage=baseline_coverage_pct,
+            initial_coverage_percentage=initial_coverage_pct,
             simulated_coverage_percentage=simulated_coverage_pct,
             execution_time_seconds=elapsed_seconds,
         )

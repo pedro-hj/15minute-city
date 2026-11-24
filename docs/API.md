@@ -235,7 +235,15 @@ Content-Type: application/json
   "k": 2,
   "algorithm": "greedy",
   "threshold_minutes": 15,
-  "min_distance_m": 300
+  "min_distance_m": 300,
+  "existing_services": [
+    {
+      "category": "health",
+      "latitude": -24.031453,
+      "longitude": -46.491341,
+      "name": "Serviço manual ou sugestão anterior aceita"
+    }
+  ]
 }
 ```
 
@@ -266,8 +274,10 @@ Resposta ilustrativa (valores fictícios):
     }
   ],
   "baseline_coverage_percentage": 72.0,
+  "initial_coverage_percentage": 75.0,
   "simulated_coverage_percentage": 78.0,
   "coverage_delta_percentage_points": 6.0,
+  "incremental_coverage_delta_percentage_points": 3.0,
   "execution_time_seconds": 0.8
 }
 ```
@@ -285,6 +295,36 @@ pode ajustar `OPTIMIZATION_MAX_NODES` após medir tempo e memória com dados rea
 Pacotes maiores retornam `503` sem iniciar a busca. O tempo informado mede
 somente o algoritmo, sem incluir o carregamento inicial do FMC1 ou a rede.
 Esse limite se aplica apenas a `/optimize`; a rota `/simulate` não o consulta.
+
+`existing_services` é opcional (padrão `[]`), com até 200 serviços no mesmo
+formato da simulação manual: `category`, `latitude`, `longitude` e `name`
+opcional. Envie a lista completa do cenário em cada chamada, incluindo pontos
+manuais e sugestões aceitas; o servidor não mantém estado entre requisições.
+Para continuar, acrescente os novos itens de `locations` à lista, usando suas
+coordenadas e a categoria solicitada. Ao remover um ponto, deixe de enviá-lo.
+Mantenha o cenário vinculado à mesma execução e separe suas categorias.
+
+Todos os serviços enviados são validados: a categoria deve existir na execução,
+as coordenadas devem ser finitas em WGS84 e estar a até 250 m da rede; falhas
+retornam `422`. Pontos da mesma categoria associados ao mesmo nó são
+deduplicados. Apenas serviços da categoria solicitada afetam sua otimização.
+A cobertura deles é incorporada antes da busca, seus nós são excluídos dos
+candidatos e `min_distance_m` também é aplicado entre eles e as novas sugestões
+(usando as posições dos nós associados). Pontos anteriores permanecem fixos
+mesmo se o limiar ou a distância mínima forem alterados.
+
+`baseline_coverage_percentage` continua representando a análise original;
+`initial_coverage_percentage` inclui os serviços enviados;
+`simulated_coverage_percentage` inclui também as novas sugestões.
+`coverage_delta_percentage_points` mede o ganho total sobre a análise original;
+`incremental_coverage_delta_percentage_points` mede apenas o ganho da rodada
+(`simulated - initial`). `marginal_population` desconta a população já atendida
+pelos serviços enviados e pelas sugestões anteriores da mesma rodada.
+`locations` contém apenas os novos pontos, com `rank` iniciado em 1 por chamada;
+`k` limita os novos pontos e continua entre 1 e 3. Sem ganho positivo, retorna
+`locations: []`. Requisições sem `existing_services` preservam o comportamento
+anterior. O frontend deve serializar chamadas do mesmo cenário para evitar
+calcular duas rodadas sobre o mesmo estado inicial.
 
 ## 4. Códigos de resposta e erros comuns
 

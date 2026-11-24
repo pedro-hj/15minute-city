@@ -35,8 +35,15 @@ class OptimizationResult:
     category: str
     locations: tuple[ProposedLocation, ...]
     baseline_coverage_percentage: float
+    initial_coverage_percentage: float
     simulated_coverage_percentage: float
     execution_time_seconds: float
+
+    @property
+    def incremental_coverage_delta_percentage_points(self) -> float:
+        return round(
+            self.simulated_coverage_percentage - self.initial_coverage_percentage, 6
+        )
 
     @property
     def coverage_delta_percentage_points(self) -> float:
@@ -51,6 +58,10 @@ class OptimizationResult:
             "category": self.category,
             "locations": [loc.to_dict() for loc in self.locations],
             "baseline_coverage_percentage": round(self.baseline_coverage_percentage, 4),
+            "initial_coverage_percentage": round(self.initial_coverage_percentage, 4),
+            "incremental_coverage_delta_percentage_points": (
+                self.incremental_coverage_delta_percentage_points
+            ),
             "simulated_coverage_percentage": round(
                 self.simulated_coverage_percentage, 4
             ),
@@ -71,6 +82,7 @@ class BaseLocationOptimizer(ABC):
         *,
         threshold_minutes: float | None = None,
         min_distance_m: float = 0.0,
+        existing_services: list[dict] | None = None,
     ) -> OptimizationResult:
         """Recommend up to k locations for a service category.
 
@@ -80,4 +92,5 @@ class BaseLocationOptimizer(ABC):
             k: Maximum number of locations to recommend.
             threshold_minutes: Walking limit; use the bundle value when omitted.
             min_distance_m: Minimum distance between recommended locations.
+            existing_services: Manual or previously recommended services in the scenario.
         """

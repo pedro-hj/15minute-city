@@ -241,16 +241,15 @@ def _metrics(
     }
 
 
-def simulate(
+def place_services(
     bundle: SimulationBundle,
     services: list[dict],
     *,
     max_snap_distance_m: float = 250,
-) -> dict:
-    """Simulate hypothetical services without mutating original data."""
-    started = time.perf_counter()
-    if not 1 <= len(services) <= 200:
-        raise InvalidSimulationRequest("Expected 1 to 200 hypothetical services")
+) -> tuple[dict[int, set[int]], list[dict]]:
+    """Validate and snap up to 200 hypothetical services to the walking graph."""
+    if len(services) > 200:
+        raise InvalidSimulationRequest("Expected at most 200 hypothetical services")
     if not math.isfinite(max_snap_distance_m) or max_snap_distance_m <= 0:
         raise InvalidSimulationRequest("Invalid snapping distance")
 
@@ -286,6 +285,23 @@ def simulate(
             }
         )
 
+    return sources, placed
+
+
+def simulate(
+    bundle: SimulationBundle,
+    services: list[dict],
+    *,
+    max_snap_distance_m: float = 250,
+) -> dict:
+    """Simulate hypothetical services without mutating original data."""
+    started = time.perf_counter()
+    if not 1 <= len(services) <= 200:
+        raise InvalidSimulationRequest("Expected 1 to 200 hypothetical services")
+    sources, placed = place_services(
+        bundle, services, max_snap_distance_m=max_snap_distance_m
+    )
+    categories = bundle.metadata["categories"]
     # Each category is routed only once, even when multiple services were added.
     updates = {
         category: _dijkstra(bundle, nodes) for category, nodes in sources.items()
