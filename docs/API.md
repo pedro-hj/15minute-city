@@ -10,7 +10,7 @@ As rotas de consulta utilizam `GET`; simulações e otimizações utilizam `POST
 | `GET /api/v1/version` | Informa nome e versão da API. |
 | `GET /api/v1/cities` | Lista municípios cadastrados. |
 | `GET /api/v1/cities/summary` | Resultado populacional mais recente de todos os municípios numa única chamada. Aceita `?categories=health,culture` para calcular a cobertura de uma combinação (pessoas que alcançam todas as categorias escolhidas); sem o parâmetro, usa todas e coincide com `overall_coverage_percentage`. |
-| `GET /api/v1/cities/boundaries` | Contornos simplificados (cerca de 200 m) de todos os municípios em um único GeoJSON `FeatureCollection`, para o mapa geral. |
+| `GET /api/v1/cities/boundaries` | Contornos previamente simplificados (cerca de 200 m) de todos os municípios em um único GeoJSON `FeatureCollection`, para o mapa geral. |
 | `GET /api/v1/cities/{city_id}` | Obtém um município específico. |
 | `GET /api/v1/categories` | Lista as categorias registradas. |
 | `GET /api/v1/cities/{city_id}/executions` | Lista execuções concluídas do município. |

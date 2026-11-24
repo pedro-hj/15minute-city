@@ -47,6 +47,12 @@ class City(Base):
         nullable=True,
         comment="Polygon or multipolygon city boundary from OpenStreetMap (EPSG:4326)",
     )
+    geom_boundary_simplified = mapped_column(
+        Geometry("GEOMETRY", srid=4326, spatial_index=False),
+        nullable=True,
+        deferred=True,
+        comment="Precomputed city boundary for the overview map (EPSG:4326)",
+    )
 
     # Relationships
     executions: Mapped[list[Execution]] = relationship(

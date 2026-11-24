@@ -1,7 +1,9 @@
 """Tests of the all-cities summary used by the Brazil map."""
 
+from types import SimpleNamespace
+
 from fifteen_minute_city.api.app import app
-from fifteen_minute_city.api.service import coverage_from_masks
+from fifteen_minute_city.api.service import build_city_boundaries, coverage_from_masks
 
 HEALTH, CULTURE = 1 << 1, 1 << 4
 
@@ -26,3 +28,34 @@ def test_summary_routes_are_not_captured_by_city_id():
     assert paths.index("/api/v1/cities/summary") < paths.index(
         "/api/v1/cities/{city_id}"
     )
+
+
+def test_boundaries_read_precomputed_geometry():
+    class SessionStub:
+        def execute(self, statement):
+            assert "geom_boundary_simplified" in statement.text
+            assert "ST_SimplifyPreserveTopology" not in statement.text
+            return SimpleNamespace(
+                all=lambda: [
+                    SimpleNamespace(
+                        id=7,
+                        name="Example",
+                        country="Brazil",
+                        geometry='{"type":"Polygon","coordinates":[]}',
+                    )
+                ]
+            )
+
+    result = build_city_boundaries(SessionStub())
+
+    assert result == {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": 7,
+                "properties": {"city_id": 7, "name": "Example", "country": "Brazil"},
+                "geometry": {"type": "Polygon", "coordinates": []},
+            }
+        ],
+    }
