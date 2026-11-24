@@ -16,13 +16,17 @@ from fifteen_minute_city.api.schemas import (
     HistoryResponse,
     MetricHistoryResponse,
     MetricResponse,
+    OptimizationRequest,
+    OptimizationResponse,
     SimulationRequest,
     SimulationResponse,
     StrategyReportResponse,
 )
+from fifteen_minute_city.application.optimizers import create_optimizer
 from fifteen_minute_city.application.server_simulation import (
     InvalidSimulationPackage,
     InvalidSimulationRequest,
+    SimulationBundle,
     load_execution_package,
     simulate,
 )
@@ -40,6 +44,8 @@ router = APIRouter(
     prefix="/api/v1",
     dependencies=[Depends(require_api_key)],
 )
+
+DEFAULT_OPTIMIZATION_MAX_NODES = 10_000
 
 
 def _city_or_404(db: Session, city_id: int) -> City:
@@ -201,21 +207,13 @@ def execution_result(execution_id: int, db: DbSession) -> dict:
     return service.build_detailed_result(db, execution)
 
 
-@router.post(
-    "/executions/{execution_id}/simulate",
-    response_model=SimulationResponse,
-    tags=["simulations"],
-)
-def simulate_execution(
-    execution_id: int, request: SimulationRequest, db: DbSession
-) -> dict:
-    """Compute a hypothetical scenario on the VPS without changing stored results."""
+def _load_completed_bundle(db: Session, execution_id: int) -> SimulationBundle:
     execution = service.get_completed_execution(db, execution_id)
     if execution is None:
         raise HTTPException(status_code=404, detail="Completed execution not found")
     folder = FilePath(os.getenv("SIMULATION_PACKAGE_DIR", "data/simulation-packages"))
     try:
-        bundle = load_execution_package(folder, execution_id)
+        return load_execution_package(folder, execution_id)
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=404,
@@ -226,10 +224,72 @@ def simulate_execution(
             status_code=503,
             detail="Simulation data is unavailable or invalid",
         ) from exc
+
+
+@router.post(
+    "/executions/{execution_id}/simulate",
+    response_model=SimulationResponse,
+    tags=["simulations"],
+)
+def simulate_execution(
+    execution_id: int, request: SimulationRequest, db: DbSession
+) -> dict:
+    """Compute a hypothetical scenario on the VPS without changing stored results."""
+    bundle = _load_completed_bundle(db, execution_id)
     try:
         return simulate(bundle, [item.model_dump() for item in request.services])
     except InvalidSimulationRequest as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/executions/{execution_id}/optimize",
+    response_model=OptimizationResponse,
+    tags=["optimizations"],
+)
+def optimize_execution(
+    execution_id: int, request: OptimizationRequest, db: DbSession
+) -> dict:
+    """Recommend service locations without modifying the completed execution."""
+    bundle = _load_completed_bundle(db, execution_id)
+    try:
+        max_nodes = int(
+            os.getenv("OPTIMIZATION_MAX_NODES", str(DEFAULT_OPTIMIZATION_MAX_NODES))
+        )
+        if max_nodes < 1:
+            raise ValueError("node limit must be positive")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=503, detail="Optimization capacity is not configured"
+        ) from exc
+    if bundle.node_count > max_nodes:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Optimization exceeds the synchronous limit of {max_nodes} nodes",
+        )
+    try:
+        result = create_optimizer(request.algorithm).optimize(
+            bundle,
+            request.category,
+            request.k,
+            threshold_minutes=request.threshold_minutes,
+            min_distance_m=request.min_distance_m,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    payload = result.to_dict()
+    payload["algorithm"] = payload.pop("strategy")
+    return {
+        "execution_id": execution_id,
+        "k_requested": request.k,
+        "threshold_minutes": (
+            request.threshold_minutes
+            if request.threshold_minutes is not None
+            else float(bundle.metadata["threshold_minutes"])
+        ),
+        "min_distance_m": request.min_distance_m,
+        **payload,
+    }
 
 
 @router.get(

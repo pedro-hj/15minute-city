@@ -10,9 +10,9 @@ from fifteen_minute_city.api.routes import router
 def create_app() -> FastAPI:
     app = FastAPI(
         title="15-Minute City API",
-        summary="Urban accessibility indicators and hypothetical service simulations.",
+        summary="Urban accessibility indicators, simulations, and service location optimization.",
         description=(
-            "Consult completed analyses and simulate additional essential services. "
+            "Consult completed analyses, simulate services, and recommend service locations. "
             "Authenticate with the X-API-Key header."
         ),
         version="1.0.0",
