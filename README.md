@@ -166,7 +166,7 @@ catálogo de endpoints, estratégias e indicadores, exemplos de respostas
 e códigos de erro. O PDF usa a família tipográfica **Montserrat**.
 
 - **[Manual de referência da API (PDF)](docs/API-manual.pdf)** - versão para consulta e impressão.
-- **[Manual de referência da API (Markdown)](docs/API.md)** - fonte oficial, atualizada junto ao código.
+- **[Manual de referência da API (Markdown)](docs/API.md)** - fonte para manutenção manual da documentação.
 
 A documentação interativa do FastAPI também está disponível em
 `http://127.0.0.1:8000/docs` na VPS. O acesso externo a esta rota
@@ -174,15 +174,18 @@ depende da configuração do Nginx.
 
 ### Política de manutenção da documentação
 
-Alterações de rotas, autenticação, parâmetros, métricas, respostas ou
-versionamento da API devem atualizar `docs/API.md` no mesmo pull request.
-O teste `tests/unit/test_api_documentation.py` identifica endpoints e
-métricas públicas não documentadas. O workflow
-`.github/workflows/api-manual.yml` gera e publica automaticamente o PDF
-sempre que a API ou o manual mudar. Revise também exemplos e semântica,
-pois esses detalhes não podem ser garantidos apenas por testes automáticos.
+A documentação em `docs/API.md` é mantida manualmente e pode ser atualizada
+em um pull request separado das alterações funcionais da API. A atualização
+do manual e a geração do PDF não são pré-requisitos para o deploy.
 
-Para gerar a versão PDF localmente:
+O CI/CD mantém as verificações de qualidade e os testes funcionais, mas não
+verifica a presença de endpoints e métricas no manual nem a estrutura dos
+capítulos. O PDF não é regenerado ou publicado automaticamente; sua versão
+disponível no repositório corresponde à última geração manual ou automática
+já realizada.
+
+Para gerar a versão PDF manualmente em um ambiente Linux com o pacote
+`fonts-montserrat` instalado:
 
 ```bash
 uv run --no-project --with reportlab==4.4.9 \
